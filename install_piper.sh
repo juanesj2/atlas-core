@@ -12,9 +12,9 @@ tar -xf piper_linux_x86_64.tar.gz
 mv piper/* .
 rm -rf piper piper_linux_x86_64.tar.gz
 
-# Descargar modelo de voz en Español (Sharvard - Medium)
-echo "Descargando modelo de voz en Español..."
-wget -q --show-progress "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/es/es_ES/sharvard/medium/es_ES-sharvard-medium.onnx?download=true" -O voice.onnx
-wget -q --show-progress "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/es/es_ES/sharvard/medium/es_ES-sharvard-medium.onnx.json?download=true" -O voice.onnx.json
+# Descargar modelo de voz en Español (Davefx - Medium - Voz masculina tipo Jarvis)
+echo "Descargando modelo de voz en Español (Masculino)..."
+wget -q --show-progress "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/es/es_ES/davefx/medium/es_ES-davefx-medium.onnx?download=true" -O voice.onnx
+wget -q --show-progress "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/es/es_ES/davefx/medium/es_ES-davefx-medium.onnx.json?download=true" -O voice.onnx.json
 
-echo "✅ PiperTTS instalado correctamente en la carpeta piper_tts/"
+echo "✅ PiperTTS y el nuevo modelo de voz instalados correctamente en la carpeta piper_tts/"
