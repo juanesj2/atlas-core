@@ -6,7 +6,7 @@
     <title>ATLAS - Satélite Virtual</title>
     <style>
         body { background-color: #1a1a1a; color: white; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; }
-        .screen-container { width: 300px; height: 300px; border-radius: 50%; background-color: #000; border: 8px solid #333; display: flex; flex-direction: column; align-items: center; justify-content: center; box-shadow: 0 0 30px rgba(0,0,0,0.8); position: relative; overflow: hidden; transition: all 0.5s ease; }
+        .screen-container { width: 300px; height: 300px; border-radius: 50%; background-color: #000; border: 8px solid #333; display: flex; flex-direction: column; align-items: center; justify-content: center; box-shadow: 0 0 30px rgba(0,0,0,0.8); position: relative; overflow: hidden; transition: all 0.5s ease; flex-shrink: 0; }
         .state-text { font-size: 24px; font-weight: bold; z-index: 10; }
         .animation-overlay { position: absolute; top: 0; left: 0; right: 0; bottom: 0; border-radius: 50%; opacity: 0.5; transition: all 0.5s ease; }
         
@@ -16,56 +16,91 @@
         .anim-waveform { background: radial-gradient(circle, #ff0055 0%, transparent 70%); animation: pulse 0.3s infinite alternate; }
         @keyframes pulse { 0% { transform: scale(0.8); opacity: 0.3; } 100% { transform: scale(1.1); opacity: 0.8; } }
 
-        .controls { margin-top: 40px; display: flex; gap: 10px; width: 80%; max-width: 500px; }
-        input[type="text"] { flex-grow: 1; padding: 10px; border-radius: 5px; border: none; font-size: 16px; }
-        button { padding: 10px 20px; background-color: #0088ff; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
-        button:hover { background-color: #0066cc; }
-        .btn-mic { background-color: #ff0055; border-radius: 50%; width: 50px; height: 50px; font-size: 20px; }
-        .btn-mic.recording { animation: pulse 0.5s infinite alternate; background-color: #ff0000; }
+        .chat-container { margin-top: 20px; width: 80%; max-width: 600px; height: 250px; background: #2a2a2a; border-radius: 12px; padding: 15px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; box-shadow: inset 0 0 10px rgba(0,0,0,0.5); }
+        .msg { padding: 10px 15px; border-radius: 15px; max-width: 75%; font-size: 15px; line-height: 1.4; word-wrap: break-word; }
+        .msg.user { background: #0088ff; color: white; align-self: flex-end; border-bottom-right-radius: 2px; }
+        .msg.atlas { background: #444; color: #eee; align-self: flex-start; border-bottom-left-radius: 2px; }
 
-        .response-box { margin-top: 20px; background: #2a2a2a; padding: 15px; border-radius: 8px; width: 80%; max-width: 500px; min-height: 50px; text-align: center; }
+        .controls { margin-top: 20px; display: flex; gap: 10px; width: 80%; max-width: 600px; align-items: center; }
+        input[type="text"] { flex-grow: 1; padding: 12px; border-radius: 8px; border: none; font-size: 16px; background: #333; color: white; }
+        input[type="text"]:focus { outline: 2px solid #0088ff; }
+        button { padding: 12px 20px; background-color: #0088ff; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; transition: 0.2s; }
+        button:hover { background-color: #0066cc; }
+        .btn-mic { background-color: #ff0055; border-radius: 50%; width: 50px; height: 50px; font-size: 20px; display: flex; justify-content: center; align-items: center; flex-shrink: 0; }
+        .btn-mic.recording { animation: pulse 0.5s infinite alternate; background-color: #ff0000; box-shadow: 0 0 15px red; }
     </style>
 </head>
 <body>
-    <h2>ATLAS Satélite Virtual</h2>
     <div class="screen-container" id="screen">
         <div class="animation-overlay" id="animationLayer"></div>
         <div class="state-text" id="stateText">IDLE</div>
     </div>
 
-    <div class="controls">
-        <button class="btn-mic" id="micButton" onclick="toggleMic()">🎤</button>
-        <input type="text" id="commandInput" placeholder="O escribe aquí..." onkeypress="handleEnter(event)">
-        <button onclick="sendCommand()">Enviar</button>
+    <div class="chat-container" id="chatBox">
+        <div class="msg atlas">Hola, soy Atlas. ¿En qué puedo ayudarte?</div>
     </div>
 
-    <div class="response-box" id="responseBox">
-        <em>La respuesta de voz de Atlas aparecerá aquí...</em>
+    <div class="controls">
+        <button class="btn-mic" id="micButton" onclick="toggleMic()">🎤</button>
+        <input type="text" id="commandInput" placeholder="Escribe o pulsa el micro..." onkeypress="handleEnter(event)">
+        <button onclick="sendCommandText()">Enviar</button>
     </div>
 
     <script>
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const ws = new WebSocket(`${protocol}//${window.location.host}`);
-        ws.binaryType = 'arraybuffer'; // Importante para recibir el audio binario
+        ws.binaryType = 'arraybuffer';
 
         const screen = document.getElementById('screen');
         const stateText = document.getElementById('stateText');
         const animationLayer = document.getElementById('animationLayer');
-        const responseBox = document.getElementById('responseBox');
+        const chatBox = document.getElementById('chatBox');
         const input = document.getElementById('commandInput');
         const micButton = document.getElementById('micButton');
 
-        let mediaRecorder;
-        let audioChunks = [];
         let isRecording = false;
+        
+        // --- SPEECH RECOGNITION (STT Nativo del navegador) ---
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        let recognition = null;
+
+        if (SpeechRecognition) {
+            recognition = new SpeechRecognition();
+            recognition.lang = 'es-ES';
+            recognition.interimResults = false;
+            recognition.maxAlternatives = 1;
+
+            recognition.onstart = () => {
+                isRecording = true;
+                micButton.classList.add('recording');
+                ws.send(JSON.stringify({ event: 'WAKE_WORD_DETECTED' }));
+            };
+
+            recognition.onresult = (event) => {
+                const transcript = event.results[0][0].transcript;
+                appendMessage('user', transcript);
+                ws.send(JSON.stringify({ event: 'TEXT_COMMAND', text: transcript }));
+            };
+
+            recognition.onerror = (event) => {
+                console.error("Error en reconocimiento de voz: ", event.error);
+                appendMessage('atlas', '⚠️ Hubo un error al escuchar tu micrófono.');
+            };
+
+            recognition.onend = () => {
+                isRecording = false;
+                micButton.classList.remove('recording');
+            };
+        } else {
+            console.warn("SpeechRecognition no está soportado en este navegador.");
+        }
 
         ws.onopen = () => console.log('Conectado al Gateway de Atlas');
 
         ws.onmessage = async (event) => {
             // Manejo de AUDIO (Binario) desde el TTS de Atlas
             if (event.data instanceof ArrayBuffer) {
-                console.log("Audio recibido del servidor, reproduciendo...");
-                const audioBlob = new Blob([event.data], { type: 'audio/mp3' });
+                const audioBlob = new Blob([event.data], { type: 'audio/wav' });
                 const audioUrl = URL.createObjectURL(audioBlob);
                 const audio = new Audio(audioUrl);
                 audio.play();
@@ -85,61 +120,40 @@
             }
 
             if (data.type === 'text_response') {
-                responseBox.innerHTML = `<strong>Atlas:</strong> ${data.text}`;
+                appendMessage('atlas', data.text);
             }
         };
 
-        // --- SISTEMA DE MICRÓFONO ---
-        async function toggleMic() {
+        function appendMessage(sender, text) {
+            const div = document.createElement('div');
+            div.className = `msg ${sender}`;
+            div.innerText = text;
+            chatBox.appendChild(div);
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }
+
+        function toggleMic() {
+            if (!recognition) {
+                alert("Tu navegador no soporta reconocimiento de voz nativo. Usa texto.");
+                return;
+            }
             if (!isRecording) {
-                try {
-                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                    mediaRecorder = new MediaRecorder(stream);
-                    
-                    mediaRecorder.ondataavailable = event => {
-                        if (event.data.size > 0) audioChunks.push(event.data);
-                    };
-
-                    mediaRecorder.onstop = () => {
-                        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-                        audioChunks = [];
-                        console.log("Enviando audio al servidor...");
-                        
-                        // Enviar el Blob binario por WebSocket
-                        ws.send(audioBlob); 
-                        
-                        // Detener la cámara/mic
-                        stream.getTracks().forEach(track => track.stop());
-                    };
-
-                    mediaRecorder.start();
-                    isRecording = true;
-                    micButton.classList.add('recording');
-                    responseBox.innerHTML = '<em>Escuchando...</em>';
-                    // Simular evento Wake Word visualmente
-                    ws.send(JSON.stringify({ event: 'WAKE_WORD_DETECTED' }));
-                } catch (err) {
-                    alert('Error al acceder al micrófono: ' + err);
-                }
+                recognition.start();
             } else {
-                mediaRecorder.stop();
-                isRecording = false;
-                micButton.classList.remove('recording');
-                responseBox.innerHTML = '<em>Procesando audio...</em>';
+                recognition.stop();
             }
         }
 
-        // --- SISTEMA DE TEXTO ---
-        function sendCommand() {
+        function sendCommandText() {
             const text = input.value.trim();
             if (!text) return;
-            responseBox.innerHTML = '<em>Pensando...</em>';
+            appendMessage('user', text);
             ws.send(JSON.stringify({ event: 'TEXT_COMMAND', text: text }));
             input.value = '';
         }
 
         function handleEnter(e) {
-            if (e.key === 'Enter') sendCommand();
+            if (e.key === 'Enter') sendCommandText();
         }
     </script>
 </body>
