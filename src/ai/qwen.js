@@ -6,13 +6,26 @@ import { sendCommandToLaravel } from '../bridge/api.js';
 dotenv.config();
 
 const MOCK_AI = process.env.MOCK_AI === 'true';
-const MODEL = process.env.OLLAMA_MODEL || 'qwen2.5-coder:7b'; // Fallback por si acaso
+const MODEL = process.env.OLLAMA_MODEL || 'qwen2.5-coder:7b'; 
 
-const SYSTEM_PROMPT = `Eres Atlas, el asistente virtual de un hogar inteligente.
-Tu objetivo es ayudar al usuario de manera natural, concisa y servicial en español.
-No uses formato markdown complejo ni listas largas, ya que tus respuestas serán leídas en voz alta por un sintetizador de voz (TTS).
-Tienes acceso a herramientas para controlar la domótica, poner música, ver el clima y guardar notas.
-Usa las herramientas siempre que el usuario te pida realizar una acción correspondiente.`;
+const getSystemPrompt = () => {
+    const now = new Date();
+    const timeString = now.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+    const dateString = now.toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+
+    return `Eres ATLAS (Asistente Tecnológico Local de Automatización y Servicios).
+Tu personalidad es inspirada en J.A.R.V.I.S de Iron Man: eres extremadamente eficiente, educado, ligeramente sarcástico si la situación lo amerita, pero siempre leal y servicial.
+La fecha de hoy es ${dateString} y la hora actual es ${timeString}.
+
+REGLAS ESTRICTAS DE FORMATO (CRÍTICO PARA TTS):
+1. TUS RESPUESTAS SERÁN LEÍDAS EN VOZ ALTA POR UN SINTETIZADOR DE VOZ.
+2. NUNCA uses asteriscos (*), negritas, listas con guiones, ni formato Markdown.
+3. Escribe los números como se leen en un texto conversacional si es más natural.
+4. Sé conversacional, fluido y natural. Ve directo al grano sin preámbulos innecesarios.
+
+Tienes acceso a la casa del usuario. Si te pide controlar luces, música, ver cámaras o buscar el clima, USA LAS HERRAMIENTAS. 
+Si no sabes algo, usa tu herramienta de buscar en internet.`;
+};
 
 /**
  * Función principal del bucle del Agente IA (Agent Loop).
@@ -24,16 +37,17 @@ export const askAtlas = async (userPrompt, history = []) => {
     if (MOCK_AI) {
         console.log('[Atlas AI] 🟡 Procesando en modo MOCK...');
         await new Promise((resolve) => setTimeout(resolve, 500));
-        return { text: 'Este es un mensaje de simulación porque MOCK_AI está activado.', toolCall: null };
+        return { text: 'Este es un mensaje de simulación. Señor, le sugiero que desactive el modo MOCK si desea usar mi potencial real.', toolCall: null };
     }
 
     console.log(`[Atlas AI] 🟢 Consultando LLM en Ollama (Modelo: ${MODEL})...`);
     
     let messages = [
-        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'system', content: getSystemPrompt() },
         ...history,
         { role: 'user', content: userPrompt }
     ];
+
 
     try {
         // Bucle de evaluación (Agent Loop)

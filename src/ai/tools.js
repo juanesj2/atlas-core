@@ -113,6 +113,30 @@ export const atlasTools = [
                 required: ['camera_name']
             }
         }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'search_internet',
+            description: 'Busca información general en internet usando Wikipedia. Úsalo para responder preguntas culturales, históricas, ciencia, etc.',
+            parameters: {
+                type: 'object',
+                properties: { query: { type: 'string', description: 'El término exacto a buscar' } },
+                required: ['query']
+            }
+        }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'set_scene',
+            description: 'Activa una escena predefinida en la casa (Modo Cine, Modo Noche, Modo Fiesta) que controla varios dispositivos a la vez.',
+            parameters: {
+                type: 'object',
+                properties: { scene_name: { type: 'string', description: 'El nombre de la escena, ej. cine, noche, fiesta' } },
+                required: ['scene_name']
+            }
+        }
     }
 ];
 
@@ -122,6 +146,8 @@ export const executeLocalTool = async (action, args) => {
         case 'play_music': return await playSpotifyMusic(args.query);
         case 'control_home_device': return await controlHomeAssistant(args.entity_id, args.action);
         case 'analyze_camera': return await analyzeCamera(args.camera_name);
+        case 'search_internet': return await searchWikipedia(args.query);
+        case 'set_scene': return await setScene(args.scene_name);
         default: return null; // Laravel
     }
 };
@@ -218,3 +244,43 @@ async function analyzeCamera(cameraName) {
             .run();
     });
 }
+
+// 5. Búsqueda en Internet (Wikipedia)
+async function searchWikipedia(query) {
+    try {
+        console.log(`[Tools] Buscando en Wikipedia: ${query}`);
+        const url = `https://es.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}&utf8=&format=json`;
+        const res = await axios.get(url);
+        
+        if (res.data.query.search.length > 0) {
+            const title = res.data.query.search[0].title;
+            const snippet = res.data.query.search[0].snippet.replace(/(<([^>]+)>)/gi, ""); // Limpiar HTML
+            return `Encontré esto en internet sobre ${title}: ${snippet}. Resúmeselo al usuario de forma natural.`;
+        } else {
+            return `No encontré información sobre ${query} en internet.`;
+        }
+    } catch (e) {
+        console.error('[Tools] Wikipedia Error:', e.message);
+        return "Hubo un error de conexión al buscar en internet.";
+    }
+}
+
+// 6. Orquestador de Escenas Complejas
+async function setScene(sceneName) {
+    console.log(`[Tools] Activando escena: ${sceneName}`);
+    const lowerScene = sceneName.toLowerCase();
+    
+    if (lowerScene.includes('cine')) {
+        await controlHomeAssistant('light.salon', 'turn_off');
+        return "Escena Modo Cine activada. He atenuado las luces para la película.";
+    } else if (lowerScene.includes('noche') || lowerScene.includes('dormir')) {
+        await controlHomeAssistant('light.todas', 'turn_off');
+        return "Escena Modo Noche activada. Todas las luces de la casa están apagadas.";
+    } else if (lowerScene.includes('fiesta')) {
+        await playSpotifyMusic('Música de Fiesta');
+        return "Escena Fiesta activada. Música en marcha y ambiente preparado.";
+    } else {
+        return `No tengo programada la escena ${sceneName}, pero dímelo si quieres que la cree.`;
+    }
+}
+
