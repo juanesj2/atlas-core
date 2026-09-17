@@ -8,9 +8,10 @@ cd piper_tts
 # Descargar binario de Piper para Linux x86_64
 echo "Descargando binario de Piper..."
 wget -q --show-progress https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_linux_x86_64.tar.gz
-tar -xf piper_linux_x86_64.tar.gz
-mv piper/* .
-rm -rf piper piper_linux_x86_64.tar.gz
+
+# Extraer el contenido ignorando la carpeta principal para no sobreescribir
+tar -xf piper_linux_x86_64.tar.gz --strip-components=1
+rm piper_linux_x86_64.tar.gz
 chmod +x piper
 
 # Descargar modelo de voz en Español (CarlFM - x_low - Voz masculina grave)
