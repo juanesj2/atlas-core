@@ -99,13 +99,13 @@ async function sendVoiceResponse(ws, text) {
             return;
         }
 
-        console.log(`[TTS] ☁️ Generando voz con Edge TTS (Álvaro Neural)...`);
+        console.log(`[TTS] ☁️ Generando voz con Edge TTS (Álvaro Neural Modificado para J.A.R.V.I.S)...`);
         
         // Escapar caracteres XML para evitar que rompan el SSML interno de Edge TTS
         const safeText = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-        // Obtener el stream de audio
-        const { audioStream } = tts.toStream(safeText);
+        // Obtener el stream de audio con el tono (pitch) rebajado para que suene como J.A.R.V.I.S.
+        const { audioStream } = tts.toStream(safeText, { pitch: '-15%', rate: '-5%' });
         
         const chunks = [];
         audioStream.on('data', chunk => chunks.push(chunk));
