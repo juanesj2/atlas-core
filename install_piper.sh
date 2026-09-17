@@ -14,9 +14,9 @@ tar -xf piper_linux_x86_64.tar.gz --strip-components=1
 rm piper_linux_x86_64.tar.gz
 chmod +x piper
 
-# Descargar modelo de voz en Español (CarlFM - x_low - Voz masculina grave)
-echo "Descargando modelo de voz en Español (Masculino grave)..."
-wget -q --show-progress "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/es/es_ES/carlfm/x_low/es_ES-carlfm-x_low.onnx?download=true" -O voice.onnx
-wget -q --show-progress "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/es/es_ES/carlfm/x_low/es_ES-carlfm-x_low.onnx.json?download=true" -O voice.onnx.json
+# Descargar modelo de voz en Español (Davefx - Medium - Voz masculina joven/normal)
+echo "Descargando modelo de voz en Español (Masculino de alta calidad)..."
+wget -q --show-progress "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/es/es_ES/davefx/medium/es_ES-davefx-medium.onnx?download=true" -O voice.onnx
+wget -q --show-progress "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/es/es_ES/davefx/medium/es_ES-davefx-medium.onnx.json?download=true" -O voice.onnx.json
 
 echo "✅ PiperTTS y la nueva voz masculina instalados correctamente en la carpeta piper_tts/"
