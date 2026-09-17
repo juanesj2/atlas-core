@@ -5,168 +5,136 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ATLAS - Satélite Virtual</title>
     <style>
-        body {
-            background-color: #1a1a1a;
-            color: white;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            height: 100vh;
-            margin: 0;
-        }
-
-        .screen-container {
-            width: 300px;
-            height: 300px;
-            border-radius: 50%; /* Simulando la pantalla GC9A01 redonda */
-            background-color: #000;
-            border: 8px solid #333;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            box-shadow: 0 0 30px rgba(0,0,0,0.8);
-            position: relative;
-            overflow: hidden;
-            transition: all 0.5s ease;
-        }
-
-        .state-text {
-            font-size: 24px;
-            font-weight: bold;
-            z-index: 10;
-        }
-
-        .animation-overlay {
-            position: absolute;
-            top: 0; left: 0; right: 0; bottom: 0;
-            border-radius: 50%;
-            opacity: 0.5;
-            transition: all 0.5s ease;
-        }
-
-        /* Animaciones simuladas */
+        body { background-color: #1a1a1a; color: white; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+        .screen-container { width: 300px; height: 300px; border-radius: 50%; background-color: #000; border: 8px solid #333; display: flex; flex-direction: column; align-items: center; justify-content: center; box-shadow: 0 0 30px rgba(0,0,0,0.8); position: relative; overflow: hidden; transition: all 0.5s ease; }
+        .state-text { font-size: 24px; font-weight: bold; z-index: 10; }
+        .animation-overlay { position: absolute; top: 0; left: 0; right: 0; bottom: 0; border-radius: 50%; opacity: 0.5; transition: all 0.5s ease; }
+        
         .anim-sleeping { background: transparent; }
         .anim-mic_active { background: radial-gradient(circle, #00ff00 0%, transparent 70%); }
-        .anim-pulsing_blue {
-            background: radial-gradient(circle, #0088ff 0%, transparent 70%);
-            animation: pulse 1s infinite alternate;
-        }
-        .anim-waveform {
-            background: radial-gradient(circle, #ff0055 0%, transparent 70%);
-            animation: pulse 0.3s infinite alternate;
-        }
+        .anim-pulsing_blue { background: radial-gradient(circle, #0088ff 0%, transparent 70%); animation: pulse 1s infinite alternate; }
+        .anim-waveform { background: radial-gradient(circle, #ff0055 0%, transparent 70%); animation: pulse 0.3s infinite alternate; }
+        @keyframes pulse { 0% { transform: scale(0.8); opacity: 0.3; } 100% { transform: scale(1.1); opacity: 0.8; } }
 
-        @keyframes pulse {
-            0% { transform: scale(0.8); opacity: 0.3; }
-            100% { transform: scale(1.1); opacity: 0.8; }
-        }
-
-        .controls {
-            margin-top: 40px;
-            display: flex;
-            gap: 10px;
-            width: 80%;
-            max-width: 500px;
-        }
-
-        input[type="text"] {
-            flex-grow: 1;
-            padding: 10px;
-            border-radius: 5px;
-            border: none;
-            font-size: 16px;
-        }
-
-        button {
-            padding: 10px 20px;
-            background-color: #0088ff;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            font-weight: bold;
-        }
+        .controls { margin-top: 40px; display: flex; gap: 10px; width: 80%; max-width: 500px; }
+        input[type="text"] { flex-grow: 1; padding: 10px; border-radius: 5px; border: none; font-size: 16px; }
+        button { padding: 10px 20px; background-color: #0088ff; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
         button:hover { background-color: #0066cc; }
+        .btn-mic { background-color: #ff0055; border-radius: 50%; width: 50px; height: 50px; font-size: 20px; }
+        .btn-mic.recording { animation: pulse 0.5s infinite alternate; background-color: #ff0000; }
 
-        .response-box {
-            margin-top: 20px;
-            background: #2a2a2a;
-            padding: 15px;
-            border-radius: 8px;
-            width: 80%;
-            max-width: 500px;
-            min-height: 50px;
-            text-align: center;
-        }
+        .response-box { margin-top: 20px; background: #2a2a2a; padding: 15px; border-radius: 8px; width: 80%; max-width: 500px; min-height: 50px; text-align: center; }
     </style>
 </head>
 <body>
-
     <h2>ATLAS Satélite Virtual</h2>
-
     <div class="screen-container" id="screen">
         <div class="animation-overlay" id="animationLayer"></div>
         <div class="state-text" id="stateText">IDLE</div>
     </div>
 
     <div class="controls">
-        <input type="text" id="commandInput" placeholder="Escribe un comando para Atlas..." onkeypress="handleEnter(event)">
+        <button class="btn-mic" id="micButton" onclick="toggleMic()">🎤</button>
+        <input type="text" id="commandInput" placeholder="O escribe aquí..." onkeypress="handleEnter(event)">
         <button onclick="sendCommand()">Enviar</button>
     </div>
 
     <div class="response-box" id="responseBox">
-        <em>La respuesta de voz simulada de Atlas aparecerá aquí...</em>
+        <em>La respuesta de voz de Atlas aparecerá aquí...</em>
     </div>
 
     <script>
-        // Conexión WebSocket
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const ws = new WebSocket(`${protocol}//${window.location.host}`);
+        ws.binaryType = 'arraybuffer'; // Importante para recibir el audio binario
 
         const screen = document.getElementById('screen');
         const stateText = document.getElementById('stateText');
         const animationLayer = document.getElementById('animationLayer');
         const responseBox = document.getElementById('responseBox');
         const input = document.getElementById('commandInput');
+        const micButton = document.getElementById('micButton');
 
-        ws.onopen = () => {
-            console.log('Conectado al Gateway de Atlas');
-        };
+        let mediaRecorder;
+        let audioChunks = [];
+        let isRecording = false;
 
-        ws.onmessage = (event) => {
+        ws.onopen = () => console.log('Conectado al Gateway de Atlas');
+
+        ws.onmessage = async (event) => {
+            // Manejo de AUDIO (Binario) desde el TTS de Atlas
+            if (event.data instanceof ArrayBuffer) {
+                console.log("Audio recibido del servidor, reproduciendo...");
+                const audioBlob = new Blob([event.data], { type: 'audio/mp3' });
+                const audioUrl = URL.createObjectURL(audioBlob);
+                const audio = new Audio(audioUrl);
+                audio.play();
+                return;
+            }
+
+            // Manejo de ESTADOS (JSON)
             const data = JSON.parse(event.data);
-            
-            // Si es un cambio de estado para la pantalla GC9A01
             if (data.state && data.animation) {
                 stateText.innerText = data.state;
                 animationLayer.className = `animation-overlay anim-${data.animation}`;
                 
-                // Efecto de anillo exterior
                 if(data.state === 'THINKING') screen.style.borderColor = '#0088ff';
                 else if(data.state === 'SPEAKING') screen.style.borderColor = '#ff0055';
                 else if(data.state === 'LISTENING') screen.style.borderColor = '#00ff00';
                 else screen.style.borderColor = '#333';
             }
 
-            // Si es la respuesta textual que leería el TTS
             if (data.type === 'text_response') {
                 responseBox.innerHTML = `<strong>Atlas:</strong> ${data.text}`;
             }
         };
 
+        // --- SISTEMA DE MICRÓFONO ---
+        async function toggleMic() {
+            if (!isRecording) {
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    mediaRecorder = new MediaRecorder(stream);
+                    
+                    mediaRecorder.ondataavailable = event => {
+                        if (event.data.size > 0) audioChunks.push(event.data);
+                    };
+
+                    mediaRecorder.onstop = () => {
+                        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                        audioChunks = [];
+                        console.log("Enviando audio al servidor...");
+                        
+                        // Enviar el Blob binario por WebSocket
+                        ws.send(audioBlob); 
+                        
+                        // Detener la cámara/mic
+                        stream.getTracks().forEach(track => track.stop());
+                    };
+
+                    mediaRecorder.start();
+                    isRecording = true;
+                    micButton.classList.add('recording');
+                    responseBox.innerHTML = '<em>Escuchando...</em>';
+                    // Simular evento Wake Word visualmente
+                    ws.send(JSON.stringify({ event: 'WAKE_WORD_DETECTED' }));
+                } catch (err) {
+                    alert('Error al acceder al micrófono: ' + err);
+                }
+            } else {
+                mediaRecorder.stop();
+                isRecording = false;
+                micButton.classList.remove('recording');
+                responseBox.innerHTML = '<em>Procesando audio...</em>';
+            }
+        }
+
+        // --- SISTEMA DE TEXTO ---
         function sendCommand() {
             const text = input.value.trim();
             if (!text) return;
-            
-            // Limpiar caja de respuesta
             responseBox.innerHTML = '<em>Pensando...</em>';
-            
-            // Enviar el comando de texto como si fuera el audio transcrito
             ws.send(JSON.stringify({ event: 'TEXT_COMMAND', text: text }));
-            
             input.value = '';
         }
 

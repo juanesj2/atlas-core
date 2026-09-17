@@ -1,5 +1,5 @@
 import { askAtlas } from '../ai/qwen.js';
-import { sendCommandToLaravel } from '../bridge/api.js';
+import * as googleTTS from 'google-tts-api';
 
 /**
  * Función helper para enviar estados visuales y animaciones al satélite.
@@ -39,60 +39,89 @@ export const handleSatelliteConnection = (ws) => {
 
                 // 2. Pasamos el texto transcrito a la IA (Ollama / Qwen)
                 const response = await askAtlas(transcribedText);
+                // ==========================================
+                // FLUJO DE ENTRADA DE AUDIO (Micrófono)
+                // ==========================================
+                console.log(`[Satellite] 🎙️ Recibidos ${message.length} bytes de audio.`);
+                sendSatelliteState(ws, 'THINKING', 'pulsing_blue');
 
-                // 3. Si la IA decidió ejecutar una herramienta, llamamos a la nube (Laravel)
-                if (response.toolCall) {
-                    await sendCommandToLaravel(response.toolCall.action, response.toolCall.payload);
-                }
+                // Aquí conectaríamos con Faster-Whisper localmente.
+                // Simulamos que Whisper ha transcrito el audio:
+                const textTranscription = "¿Qué tiempo hace en Madrid?"; 
+                console.log(`[STT] Transcripción simulada: "${textTranscription}"`);
+                
+                // Procesar con la IA
+                const response = await askAtlas(textTranscription);
+                await sendVoiceResponse(ws, response.text);
 
-                // TODO: En producción, aquí se enviaría response.text a Piper (TTS) para generar audio
-                // y se transmitiría el buffer de audio de vuelta por WebSocket al DAC I2S.
-                sendSatelliteState(ws, 'SPEAKING', 'waveform');
-
-                // Simulamos que terminó de hablar después de 3 segundos y vuelve a dormir
-                setTimeout(() => sendSatelliteState(ws, 'IDLE', 'sleeping'), 3000);
                 return;
             }
 
-            // B) Manejo de Eventos JSON (Ej: Wake Word local, telemetría o comandos de texto de la Web)
+            // ==========================================
+            // FLUJO DE EVENTOS JSON (Texto de la web)
+            // ==========================================
             const data = JSON.parse(message.toString());
             console.log('[Satellite] Mensaje JSON recibido:', data);
 
             if (data.event === 'WAKE_WORD_DETECTED') {
-                // El ESP32 detectó la palabra de activación (ej: "Hey Atlas")
                 sendSatelliteState(ws, 'LISTENING', 'mic_active');
             } else if (data.event === 'TEXT_COMMAND' && data.text) {
                 console.log(`[Web Simulator] Comando de texto recibido: "${data.text}"`);
                 sendSatelliteState(ws, 'THINKING', 'pulsing_blue');
 
-                // Procesamos el texto con la IA (Ollama / Qwen)
-                // Ahora askAtlas gestiona internamente TODAS las llamadas a herramientas
-                // y siempre nos devuelve el texto final amigable para que el satélite hable.
                 const response = await askAtlas(data.text);
-
-                // Generamos audio (simulado)
-                sendSatelliteState(ws, 'SPEAKING', 'waveform');
-                
-                // Enviar la respuesta de texto a la web para que la muestre en pantalla
-                if (ws.readyState === ws.OPEN) {
-                    ws.send(JSON.stringify({ type: 'text_response', text: response.text }));
-                }
-
-                setTimeout(() => sendSatelliteState(ws, 'IDLE', 'sleeping'), 3000);
+                await sendVoiceResponse(ws, response.text);
             }
-
 
         } catch (error) {
             console.error('[Satellite] Error procesando mensaje:', error);
-            sendSatelliteState(ws, 'IDLE', 'error');
         }
     });
 
     ws.on('close', () => {
-        console.log('🔌 Satellite disconnected');
+        console.log(`[Satellite] 🔴 Desconectado: ${clientIp}`);
     });
 
     ws.on('error', (error) => {
         console.error('❌ Satellite WebSocket error:', error);
     });
 };
+
+/**
+ * Función que genera el audio TTS y lo envía junto con el texto a la pantalla/web
+ */
+async function sendVoiceResponse(ws, text) {
+    // 1. Enviar estado visual a la pantalla
+    sendSatelliteState(ws, 'SPEAKING', 'waveform');
+    
+    if (ws.readyState === ws.OPEN) {
+        // Enviar la respuesta textual para la UI
+        ws.send(JSON.stringify({ type: 'text_response', text: text }));
+    }
+
+    try {
+        // 2. Generar Voz con Google TTS (Provisional hasta poner PiperTTS)
+        console.log(`[TTS] Generando audio para: "${text.substring(0,30)}..."`);
+        const url = googleTTS.getAudioUrl(text, { lang: 'es', slow: false, host: 'https://translate.google.com' });
+        
+        // Descargamos el buffer de audio (MP3)
+        const audioRes = await fetch(url);
+        const arrayBuffer = await audioRes.arrayBuffer();
+        
+        // 3. Enviar binario (Música/Voz) al cliente
+        if (ws.readyState === ws.OPEN) {
+            ws.send(arrayBuffer, { binary: true });
+        }
+    } catch (e) {
+        console.error('[TTS] Error generando voz:', e.message);
+    }
+
+    // 4. Volver a dormir
+    setTimeout(() => sendSatelliteState(ws, 'IDLE', 'sleeping'), 5000);
+}
+
+function sendSatelliteState(ws, state, animation) {
+    if (ws.readyState === ws.OPEN) {
+        ws.send(JSON.stringify({ state, animation }));
+    }
+}
