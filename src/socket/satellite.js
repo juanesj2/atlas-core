@@ -1,5 +1,11 @@
 import { askAtlas } from '../ai/qwen.js';
 import * as googleTTS from 'google-tts-api';
+import { exec } from 'child_process';
+import util from 'util';
+import fs from 'fs';
+import path from 'path';
+
+const execPromise = util.promisify(exec);
 
 /**
  * Función helper para enviar estados visuales y animaciones al satélite.
@@ -18,48 +24,29 @@ const sendSatelliteState = (ws, state, animation = 'default') => {
 /**
  * Gestiona el ciclo de vida y los mensajes de un WebSocket conectado (ESP32).
  * @param {WebSocket} ws 
+ * @param {http.IncomingMessage} req 
  */
-export const handleSatelliteConnection = (ws) => {
-    // 1. Al conectar, enviamos el estado inactivo al satélite
+export const handleSatelliteConnection = (ws, req) => {
+    const clientIp = req ? req.socket.remoteAddress : 'unknown';
+    console.log(`[Satellite] 🟢 Nueva conexión desde: ${clientIp}`);
+
+    // Enviar estado inicial
     sendSatelliteState(ws, 'IDLE', 'sleeping');
 
     ws.on('message', async (message, isBinary) => {
         try {
-            // A) Manejo de Stream Binario (Ej: Audio capturado por el micrófono I2S)
             if (isBinary) {
-                console.log(`[Satellite] Recibidos ${message.length} bytes de audio binario.`);
-                
-                // Animación visual de pensamiento mientras procesamos
-                sendSatelliteState(ws, 'THINKING', 'pulsing_blue');
-
-                // TODO: En producción, aquí se enviaría el buffer a Faster-Whisper (STT)
-                // Para el flujo actual, simulamos una transcripción fija:
-                const transcribedText = "Guarda una nota secreta que diga comprar pan";
-                console.log(`[STT Simulado] Usuario dijo: "${transcribedText}"`);
-
-                // 2. Pasamos el texto transcrito a la IA (Ollama / Qwen)
-                const response = await askAtlas(transcribedText);
-                // ==========================================
-                // FLUJO DE ENTRADA DE AUDIO (Micrófono)
-                // ==========================================
                 console.log(`[Satellite] 🎙️ Recibidos ${message.length} bytes de audio.`);
                 sendSatelliteState(ws, 'THINKING', 'pulsing_blue');
 
-                // Aquí conectaríamos con Faster-Whisper localmente.
-                // Simulamos que Whisper ha transcrito el audio:
                 const textTranscription = "¿Qué tiempo hace en Madrid?"; 
                 console.log(`[STT] Transcripción simulada: "${textTranscription}"`);
                 
-                // Procesar con la IA
                 const response = await askAtlas(textTranscription);
                 await sendVoiceResponse(ws, response.text);
-
                 return;
             }
 
-            // ==========================================
-            // FLUJO DE EVENTOS JSON (Texto de la web)
-            // ==========================================
             const data = JSON.parse(message.toString());
             console.log('[Satellite] Mensaje JSON recibido:', data);
 
@@ -83,45 +70,51 @@ export const handleSatelliteConnection = (ws) => {
     });
 
     ws.on('error', (error) => {
-        console.error('❌ Satellite WebSocket error:', error);
+        console.error(`[Satellite] ❌ Error en WebSocket:`, error);
     });
 };
 
 /**
- * Función que genera el audio TTS y lo envía junto con el texto a la pantalla/web
+ * Función que genera el audio TTS (Piper o Google) y lo envía junto con el texto a la pantalla/web
  */
 async function sendVoiceResponse(ws, text) {
-    // 1. Enviar estado visual a la pantalla
     sendSatelliteState(ws, 'SPEAKING', 'waveform');
     
     if (ws.readyState === ws.OPEN) {
-        // Enviar la respuesta textual para la UI
         ws.send(JSON.stringify({ type: 'text_response', text: text }));
     }
 
     try {
-        // 2. Generar Voz con Google TTS (Provisional hasta poner PiperTTS)
-        console.log(`[TTS] Generando audio para: "${text.substring(0,30)}..."`);
-        const url = googleTTS.getAudioUrl(text, { lang: 'es', slow: false, host: 'https://translate.google.com' });
-        
-        // Descargamos el buffer de audio (MP3)
-        const audioRes = await fetch(url);
-        const arrayBuffer = await audioRes.arrayBuffer();
-        
-        // 3. Enviar binario (Música/Voz) al cliente
+        const piperDir = path.join(process.cwd(), 'piper_tts');
+        const piperBin = path.join(piperDir, 'piper');
+        const piperModel = path.join(piperDir, 'voice.onnx');
+        const outputWav = path.join(process.cwd(), 'temp_tts.wav');
+
+        let audioBuffer;
+
+        // Si PiperTTS está instalado localmente, lo usamos (Latencia 0)
+        if (fs.existsSync(piperBin)) {
+            console.log(`[TTS] ⚡ Usando PiperTTS Local para: "${text.substring(0,30)}..."`);
+            const safeText = text.replace(/"/g, '\\"');
+            await execPromise(`echo "${safeText}" | ${piperBin} --model ${piperModel} --output_file ${outputWav}`);
+            audioBuffer = fs.readFileSync(outputWav);
+            fs.unlinkSync(outputWav); // Limpiar
+        } 
+        // Si no está instalado, usamos Google como Fallback
+        else {
+            console.log(`[TTS] ☁️ Usando Google TTS Fallback para: "${text.substring(0,30)}..."`);
+            const url = googleTTS.getAudioUrl(text, { lang: 'es', slow: false, host: 'https://translate.google.com' });
+            const audioRes = await fetch(url);
+            audioBuffer = await audioRes.arrayBuffer();
+        }
+
+        // Enviar binario (Música/Voz) al cliente
         if (ws.readyState === ws.OPEN) {
-            ws.send(arrayBuffer, { binary: true });
+            ws.send(audioBuffer, { binary: true });
         }
     } catch (e) {
         console.error('[TTS] Error generando voz:', e.message);
     }
 
-    // 4. Volver a dormir
     setTimeout(() => sendSatelliteState(ws, 'IDLE', 'sleeping'), 5000);
-}
-
-function sendSatelliteState(ws, state, animation) {
-    if (ws.readyState === ws.OPEN) {
-        ws.send(JSON.stringify({ state, animation }));
-    }
 }
