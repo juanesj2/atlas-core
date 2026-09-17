@@ -7,17 +7,8 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Instancia de Edge TTS
+// Instancia global de Edge TTS
 const tts = new MsEdgeTTS();
-let ttsReady = false;
-
-// Configurar la voz neuronal de Microsoft (Álvaro)
-tts.setMetadata('es-ES-AlvaroNeural', OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3)
-    .then(() => {
-        ttsReady = true;
-        console.log('[TTS] 🟢 Edge TTS (Álvaro Neural) inicializado correctamente.');
-    })
-    .catch(err => console.error('[TTS] Error inicializando Edge TTS:', err));
 
 /**
  * Función helper para enviar estados visuales y animaciones al satélite.
@@ -61,11 +52,11 @@ export const handleSatelliteConnection = (ws, req) => {
             if (data.event === 'WAKE_WORD_DETECTED') {
                 sendSatelliteState(ws, 'LISTENING', 'mic_active');
             } else if (data.event === 'TEXT_COMMAND' && data.text) {
-                console.log(`[Web Simulator] Comando de texto recibido: "${data.text}"`);
+                console.log(`[Web Simulator] Comando de texto: "${data.text}", Voz preferida: ${data.voice}`);
                 sendSatelliteState(ws, 'THINKING', 'pulsing_blue');
 
                 const response = await askAtlas(data.text);
-                await sendVoiceResponse(ws, response.text);
+                await sendVoiceResponse(ws, response.text, data.voice);
             }
 
         } catch (error) {
@@ -83,9 +74,9 @@ export const handleSatelliteConnection = (ws, req) => {
 };
 
 /**
- * Función que genera el audio usando Edge TTS y lo envía al cliente.
+ * Función que genera el audio usando Edge TTS dinámicamente y lo envía al cliente.
  */
-async function sendVoiceResponse(ws, text) {
+async function sendVoiceResponse(ws, text, voicePreference = 'male') {
     sendSatelliteState(ws, 'SPEAKING', 'waveform');
     
     if (ws.readyState === ws.OPEN) {
@@ -93,18 +84,15 @@ async function sendVoiceResponse(ws, text) {
     }
 
     try {
-        if (!ttsReady) {
-            console.error('[TTS] Edge TTS no está listo todavía.');
-            setTimeout(() => sendSatelliteState(ws, 'IDLE', 'sleeping'), 2000);
-            return;
-        }
-
-        console.log(`[TTS] ☁️ Generando voz con Edge TTS (Álvaro Neural Amistoso)...`);
+        // Seleccionar el modelo de voz de Microsoft según la preferencia
+        const voiceModel = voicePreference === 'female' ? 'es-ES-ElviraNeural' : 'es-ES-AlvaroNeural';
         
+        console.log(`[TTS] ☁️ Configurando modelo de voz a: ${voiceModel}`);
+        await tts.setMetadata(voiceModel, OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3);
+
         // Escapar caracteres XML para evitar que rompan el SSML interno de Edge TTS
         const safeText = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-        // Voz por defecto (sin filtros graves) para que suene amigable y natural
         const { audioStream } = tts.toStream(safeText);
         
         const chunks = [];
@@ -112,7 +100,7 @@ async function sendVoiceResponse(ws, text) {
         
         audioStream.on('close', () => {
             const audioBuffer = Buffer.concat(chunks);
-            console.log(`[TTS] ✅ Audio generado con éxito (${audioBuffer.length} bytes).`);
+            console.log(`[TTS] ✅ Audio generado (${voiceModel}) - ${audioBuffer.length} bytes.`);
             
             // Enviar el buffer binario por WebSocket al cliente o satélite
             if (ws.readyState === ws.OPEN) {
