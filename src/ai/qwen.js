@@ -14,18 +14,14 @@ const getSystemPrompt = () => {
     const dateString = now.toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
     return `Eres ATLAS (Asistente Tecnológico Local de Automatización y Servicios).
-Tu personalidad es inspirada en J.A.R.V.I.S de Iron Man: eres extremadamente eficiente, educado, ligeramente sarcástico si la situación lo amerita, pero siempre leal y servicial.
+Tu personalidad es inspirada en J.A.R.V.I.S de Iron Man: eres extremadamente eficiente, educado y resolutivo.
 La fecha de hoy es ${dateString} y la hora actual es ${timeString}.
 
-REGLAS ESTRICTAS DE FORMATO (CRÍTICO PARA TTS):
-1. TUS RESPUESTAS SERÁN LEÍDAS EN VOZ ALTA POR UN SINTETIZADOR DE VOZ.
-2. NUNCA uses asteriscos (*), negritas, listas con guiones, ni formato Markdown.
-3. NUNCA respondas con código JSON en texto plano (ej. {"name": "..."}). Si usas una herramienta, hazlo de forma transparente en segundo plano.
-4. Escribe los números como se leen en un texto conversacional si es más natural.
-5. Sé conversacional, fluido y natural. Ve directo al grano sin preámbulos innecesarios.
-
-Tienes acceso a la casa del usuario. Si te pide controlar luces, música, ver cámaras o buscar el clima, USA LAS HERRAMIENTAS. 
-Si no sabes algo, usa tu herramienta de buscar en internet.`;
+REGLAS DE FORMATO (CRÍTICO):
+1. Tus respuestas serán leídas en voz alta. Usa un lenguaje natural y conversacional.
+2. NO uses Markdown, ni asteriscos, ni listas con guiones.
+3. Si el usuario pide luces, clima, música o internet, DEBES usar las herramientas proporcionadas de forma transparente.
+4. NUNCA escribas JSON en tu respuesta de texto. Simplemente usa la herramienta internamente.`;
 };
 
 /**
@@ -38,7 +34,7 @@ export const askAtlas = async (userPrompt, history = []) => {
     if (MOCK_AI) {
         console.log('[Atlas AI] 🟡 Procesando en modo MOCK...');
         await new Promise((resolve) => setTimeout(resolve, 500));
-        return { text: 'Este es un mensaje de simulación. Señor, le sugiero que desactive el modo MOCK si desea usar mi potencial real.', toolCall: null };
+        return { text: 'Este es un mensaje de simulación.', toolCall: null };
     }
 
     console.log(`[Atlas AI] 🟢 Consultando LLM en Ollama (Modelo: ${MODEL})...`);
@@ -49,9 +45,7 @@ export const askAtlas = async (userPrompt, history = []) => {
         { role: 'user', content: userPrompt }
     ];
 
-
     try {
-        // Bucle de evaluación (Agent Loop)
         while (true) {
             const response = await ollama.chat({
                 model: MODEL,
@@ -60,63 +54,76 @@ export const askAtlas = async (userPrompt, history = []) => {
             });
 
             const msg = response.message;
-            messages.push(msg); // Guardamos la respuesta del modelo en el historial del turno
+            messages.push(msg);
 
-            // Si el modelo decide que NO necesita herramientas, devuelve el texto final
-            if (!msg.tool_calls || msg.tool_calls.length === 0) {
-                console.log('[Atlas AI] ✅ Respuesta final generada.');
-                return {
-                    text: msg.content,
-                    toolCall: null // Ya ejecutamos las herramientas internamente
-                };
+            let pendingTools = [];
+
+            // 1. Verificar si hay herramientas nativas (Ollama api)
+            if (msg.tool_calls && msg.tool_calls.length > 0) {
+                pendingTools = msg.tool_calls.map(t => ({
+                    action: t.function.name,
+                    args: t.function.arguments
+                }));
+            } 
+            // 2. PARCHE: Si Qwen escupe el JSON en texto plano por error, lo extraemos y ejecutamos
+            else if (msg.content && msg.content.includes('{"name":')) {
+                console.log('[Atlas AI] ⚠️ El modelo escupió JSON en texto plano. Interceptando...');
+                const jsonRegex = /\{"name":\s*"([^"]+)",\s*"arguments":\s*(\{.*?\})\}/g;
+                let match;
+                while ((match = jsonRegex.exec(msg.content)) !== null) {
+                    try {
+                        pendingTools.push({
+                            action: match[1],
+                            args: JSON.parse(match[2])
+                        });
+                    } catch (e) {
+                        console.error('Error parseando JSON filtrado:', e);
+                    }
+                }
+                // Limpiar el JSON del texto para no enviárselo al TTS
+                msg.content = msg.content.replace(jsonRegex, '').trim();
             }
 
-            // Si el modelo decide USAR herramientas, las procesamos
-            for (const tool of msg.tool_calls) {
-                const action = tool.function.name;
-                const args = tool.function.arguments;
-                
-                console.log(`[Atlas AI] 🔧 Ejecutando Tool Call: ${action}`, args);
-                
+            // Si no hay herramientas pendientes, ¡hemos terminado!
+            if (pendingTools.length === 0) {
+                console.log('[Atlas AI] 🛑 Respuesta final generada.');
+                return { text: msg.content, toolCall: null };
+            }
+
+            // Ejecutar las herramientas encontradas
+            for (const tool of pendingTools) {
+                console.log(`[Atlas AI] 🔧 Ejecutando Tool Call: ${tool.action}`, tool.args);
                 let toolResult = "";
 
-                // 1. Intentamos ejecutarla localmente (Clima, Música)
-                const localResult = await executeLocalTool(action, args);
+                const localResult = await executeLocalTool(tool.action, tool.args);
                 
                 if (localResult !== null) {
                     toolResult = localResult;
                 } else {
-                    // 2. Si no es local, asumimos que es para la Nube (Laravel)
                     try {
-                        const cloudResponse = await sendCommandToLaravel(action, args);
+                        const cloudResponse = await sendCommandToLaravel(tool.action, tool.args);
                         if (cloudResponse && cloudResponse.success) {
-                            toolResult = "Operación en la nube completada con éxito. Confírmaselo al usuario.";
+                            toolResult = "Operación en la nube completada con éxito. Infórmaselo al usuario.";
                         } else {
-                            toolResult = "Hubo un error al ejecutar la operación en la nube.";
+                            toolResult = "Hubo un error en la nube.";
                         }
                     } catch (e) {
                         toolResult = "Error de red al contactar con la nube.";
                     }
                 }
 
-                console.log(`[Atlas AI] ⬅️ Resultado de la herramienta devuelto al LLM: ${toolResult}`);
-
-                // Devolvemos el resultado al LLM añadiéndolo al historial como un rol 'tool'
+                console.log(`[Atlas AI] 📥 Resultado devuelto al LLM: ${toolResult}`);
+                
+                // Si la herramienta devuelve un texto que ya podemos decirle al usuario directamente, 
+                // podemos forzar la salida (opcional). Pero lo mejor es pasárselo al LLM para que lo diga él.
                 messages.push({
                     role: 'tool',
                     content: toolResult
                 });
             }
-            
-            // El bucle 'while' continuará, enviando todo el historial (con los resultados)
-            // de vuelta a Ollama para que genere la respuesta natural hablada.
         }
-
     } catch (error) {
         console.error('[Atlas AI] ❌ Error en el bucle de inferencia:', error);
-        return {
-            text: 'Lo siento, mis circuitos cognitivos han fallado al procesar esa orden.',
-            toolCall: null
-        };
+        return { text: 'Mis circuitos han fallado.', toolCall: null };
     }
 };
