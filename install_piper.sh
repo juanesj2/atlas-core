@@ -1,7 +1,7 @@
 #!/bin/bash
 # Script para descargar e instalar PiperTTS y un modelo de voz en Español
-echo "Instalando Piper TTS localmente en la torre..."
-
+echo "Limpiando instalación anterior de Piper..."
+rm -rf piper_tts
 mkdir -p piper_tts
 cd piper_tts
 
@@ -11,10 +11,11 @@ wget -q --show-progress https://github.com/rhasspy/piper/releases/download/2023.
 tar -xf piper_linux_x86_64.tar.gz
 mv piper/* .
 rm -rf piper piper_linux_x86_64.tar.gz
+chmod +x piper
 
-# Descargar modelo de voz en Español (Davefx - Medium - Voz masculina tipo Jarvis)
-echo "Descargando modelo de voz en Español (Masculino)..."
-wget -q --show-progress "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/es/es_ES/davefx/medium/es_ES-davefx-medium.onnx?download=true" -O voice.onnx
-wget -q --show-progress "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/es/es_ES/davefx/medium/es_ES-davefx-medium.onnx.json?download=true" -O voice.onnx.json
+# Descargar modelo de voz en Español (CarlFM - x_low - Voz masculina grave)
+echo "Descargando modelo de voz en Español (Masculino grave)..."
+wget -q --show-progress "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/es/es_ES/carlfm/x_low/es_ES-carlfm-x_low.onnx?download=true" -O voice.onnx
+wget -q --show-progress "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/es/es_ES/carlfm/x_low/es_ES-carlfm-x_low.onnx.json?download=true" -O voice.onnx.json
 
-echo "✅ PiperTTS y el nuevo modelo de voz instalados correctamente en la carpeta piper_tts/"
+echo "✅ PiperTTS y la nueva voz masculina instalados correctamente en la carpeta piper_tts/"
