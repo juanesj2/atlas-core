@@ -5,17 +5,46 @@ import { WebSocketServer } from 'ws';
 import { handleSatelliteConnection } from './socket/satellite.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import fs from 'fs';
+import { spotifyApi } from './ai/tools.js';
 
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const TOKEN_PATH = path.join(__dirname, '../spotify_tokens.json');
 
 const PORT = process.env.PORT || 8080;
 const MOCK_AI = process.env.MOCK_AI === 'true';
 
 const app = express();
 app.use(express.static(path.join(__dirname, '../public')));
+
+// === RUTAS PARA AUTENTICACIÓN DE SPOTIFY ===
+app.get('/spotify/login', (req, res) => {
+    const scopes = ['user-read-private', 'user-read-email', 'user-modify-playback-state', 'user-read-playback-state'];
+    const authorizeURL = spotifyApi.createAuthorizeURL(scopes, 'atlas-state');
+    res.redirect(authorizeURL);
+});
+
+app.get('/callback', async (req, res) => {
+    const code = req.query.code;
+    try {
+        const data = await spotifyApi.authorizationCodeGrant(code);
+        const { access_token, refresh_token } = data.body;
+        
+        // Guardar tokens en el servidor
+        spotifyApi.setAccessToken(access_token);
+        spotifyApi.setRefreshToken(refresh_token);
+        fs.writeFileSync(TOKEN_PATH, JSON.stringify({ access_token, refresh_token }));
+        
+        res.send('<h1>¡Spotify Vinculado!</h1><p>Ya puedes cerrar esta ventana y pedirle música a Atlas.</p>');
+    } catch (err) {
+        console.error('Error en Spotify Callback', err);
+        res.status(500).send('Error vinculando Spotify.');
+    }
+});
+// ===========================================
 
 const server = createServer(app);
 
