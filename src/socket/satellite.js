@@ -4,20 +4,19 @@ import { exec } from 'child_process';
 import util from 'util';
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 
 const execPromise = util.promisify(exec);
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 /**
  * Función helper para enviar estados visuales y animaciones al satélite.
- * @param {WebSocket} ws - Instancia de WebSocket activa.
- * @param {"IDLE"|"LISTENING"|"THINKING"|"SPEAKING"} state - Estado del sistema.
- * @param {string} animation - Nombre de la animación para la pantalla LCD.
  */
 const sendSatelliteState = (ws, state, animation = 'default') => {
     if (ws.readyState === ws.OPEN) {
         const payload = JSON.stringify({ state, animation });
         ws.send(payload);
-        console.log(`[Satellite] State updated -> ${state} (${animation})`);
     }
 };
 
@@ -85,23 +84,40 @@ async function sendVoiceResponse(ws, text) {
     }
 
     try {
-        const piperDir = path.join(process.cwd(), 'piper_tts');
+        // Resolvemos las rutas de forma absoluta independiente de dónde se ejecutó npm run dev
+        const projectRoot = path.join(__dirname, '../../'); 
+        const piperDir = path.join(projectRoot, 'piper_tts');
         const piperBin = path.join(piperDir, 'piper');
         const piperModel = path.join(piperDir, 'voice.onnx');
-        const outputWav = path.join(process.cwd(), 'temp_tts.wav');
+        const outputWav = path.join(projectRoot, `temp_tts_${Date.now()}.wav`);
 
-        let audioBuffer;
+        let audioBuffer = null;
+        let usedPiper = false;
 
-        // Si PiperTTS está instalado localmente, lo usamos (Latencia 0)
-        if (fs.existsSync(piperBin)) {
-            console.log(`[TTS] ⚡ Usando PiperTTS Local para: "${text.substring(0,30)}..."`);
-            const safeText = text.replace(/"/g, '\\"');
-            await execPromise(`echo "${safeText}" | ${piperBin} --model ${piperModel} --output_file ${outputWav}`);
-            audioBuffer = fs.readFileSync(outputWav);
-            fs.unlinkSync(outputWav); // Limpiar
-        } 
-        // Si no está instalado, usamos Google como Fallback
-        else {
+        // Intentar usar PiperTTS
+        if (fs.existsSync(piperBin) && fs.existsSync(piperModel)) {
+            try {
+                console.log(`[TTS] ⚡ Intentando usar PiperTTS Local para: "${text.substring(0,30)}..."`);
+                const safeText = text.replace(/"/g, '\\"');
+                
+                // Ejecutamos Piper
+                await execPromise(`echo "${safeText}" | ${piperBin} --model ${piperModel} --output_file ${outputWav}`);
+                
+                if (fs.existsSync(outputWav)) {
+                    audioBuffer = fs.readFileSync(outputWav);
+                    fs.unlinkSync(outputWav); // Limpiar archivo temporal
+                    usedPiper = true;
+                    console.log(`[TTS] ✅ Audio generado con Piper con éxito.`);
+                }
+            } catch (piperError) {
+                console.error(`[TTS] ⚠️ Error crítico al ejecutar Piper: ${piperError.message}. Haciendo fallback a Google...`);
+            }
+        } else {
+            console.log(`[TTS] ⚠️ Piper no encontrado en ${piperBin}`);
+        }
+
+        // Fallback a Google TTS si Piper falló o no existe
+        if (!usedPiper) {
             console.log(`[TTS] ☁️ Usando Google TTS Fallback para: "${text.substring(0,30)}..."`);
             const url = googleTTS.getAudioUrl(text, { lang: 'es', slow: false, host: 'https://translate.google.com' });
             const audioRes = await fetch(url);
@@ -109,11 +125,11 @@ async function sendVoiceResponse(ws, text) {
         }
 
         // Enviar binario (Música/Voz) al cliente
-        if (ws.readyState === ws.OPEN) {
+        if (ws.readyState === ws.OPEN && audioBuffer) {
             ws.send(audioBuffer, { binary: true });
         }
     } catch (e) {
-        console.error('[TTS] Error generando voz:', e.message);
+        console.error('[TTS] Error fatal generando voz:', e.message);
     }
 
     setTimeout(() => sendSatelliteState(ws, 'IDLE', 'sleeping'), 5000);
