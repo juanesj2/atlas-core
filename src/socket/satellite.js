@@ -54,14 +54,36 @@ export const handleSatelliteConnection = (ws) => {
                 return;
             }
 
-            // B) Manejo de Eventos JSON (Ej: Wake Word local, telemetría)
+            // B) Manejo de Eventos JSON (Ej: Wake Word local, telemetría o comandos de texto de la Web)
             const data = JSON.parse(message.toString());
             console.log('[Satellite] Mensaje JSON recibido:', data);
 
             if (data.event === 'WAKE_WORD_DETECTED') {
                 // El ESP32 detectó la palabra de activación (ej: "Hey Atlas")
                 sendSatelliteState(ws, 'LISTENING', 'mic_active');
+            } else if (data.event === 'TEXT_COMMAND' && data.text) {
+                console.log(`[Web Simulator] Comando de texto recibido: "${data.text}"`);
+                sendSatelliteState(ws, 'THINKING', 'pulsing_blue');
+
+                // Procesamos el texto con la IA (Ollama / Qwen)
+                const response = await askAtlas(data.text);
+
+                // Llamamos a la nube (Laravel) si hay toolCall
+                if (response.toolCall) {
+                    await sendCommandToLaravel(response.toolCall.action, response.toolCall.payload);
+                }
+
+                // Generamos audio (simulado)
+                sendSatelliteState(ws, 'SPEAKING', 'waveform');
+                
+                // Enviar la respuesta de texto a la web para que la muestre en pantalla
+                if (ws.readyState === ws.OPEN) {
+                    ws.send(JSON.stringify({ type: 'text_response', text: response.text }));
+                }
+
+                setTimeout(() => sendSatelliteState(ws, 'IDLE', 'sleeping'), 3000);
             }
+
 
         } catch (error) {
             console.error('[Satellite] Error procesando mensaje:', error);

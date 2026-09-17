@@ -1,22 +1,37 @@
 import dotenv from 'dotenv';
+import express from 'express';
+import { createServer } from 'http';
 import { WebSocketServer } from 'ws';
 import { handleSatelliteConnection } from './socket/satellite.js';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
-// Cargar variables de entorno
 dotenv.config();
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const PORT = process.env.PORT || 8080;
 const MOCK_AI = process.env.MOCK_AI === 'true';
+
+const app = express();
+app.use(express.static(path.join(__dirname, '../public')));
+
+const server = createServer(app);
 
 console.log('='.repeat(40));
 console.log('🚀 ATLAS Gateway Initializing...');
 console.log(`🤖 MOCK_AI Mode: ${MOCK_AI ? '🟢 ACTIVE' : '🔴 INACTIVE'}`);
 console.log('='.repeat(40));
 
-// Inicialización del servidor WebSocket
-const wss = new WebSocketServer({ port: PORT }, () => {
+// Inicialización del servidor WebSocket anclado al servidor HTTP de Express
+const wss = new WebSocketServer({ server });
+
+server.listen(PORT, () => {
+    console.log(`🌍 Web Simulator running on http://localhost:${PORT}`);
     console.log(`📡 WebSocket server running on ws://localhost:${PORT}`);
 });
+
 
 // Manejo de conexiones entrantes de los satélites (ESP32)
 wss.on('connection', (ws, req) => {
