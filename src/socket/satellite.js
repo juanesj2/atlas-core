@@ -88,7 +88,7 @@ async function sendVoiceResponse(ws, text, voicePreference = 'male') {
         const voiceModel = voicePreference === 'female' ? 'es-ES-ElviraNeural' : 'es-ES-AlvaroNeural';
         
         console.log(`[TTS] ☁️ Configurando modelo de voz a: ${voiceModel}`);
-        await tts.setMetadata(voiceModel, OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3);
+        await tts.setMetadata(voiceModel, OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3, { voiceLocale: 'es-ES' });
 
         // Escapar caracteres XML para evitar que rompan el SSML interno de Edge TTS
         const safeText = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
