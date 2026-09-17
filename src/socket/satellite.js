@@ -66,12 +66,9 @@ export const handleSatelliteConnection = (ws) => {
                 sendSatelliteState(ws, 'THINKING', 'pulsing_blue');
 
                 // Procesamos el texto con la IA (Ollama / Qwen)
+                // Ahora askAtlas gestiona internamente TODAS las llamadas a herramientas
+                // y siempre nos devuelve el texto final amigable para que el satélite hable.
                 const response = await askAtlas(data.text);
-
-                // Llamamos a la nube (Laravel) si hay toolCall
-                if (response.toolCall) {
-                    await sendCommandToLaravel(response.toolCall.action, response.toolCall.payload);
-                }
 
                 // Generamos audio (simulado)
                 sendSatelliteState(ws, 'SPEAKING', 'waveform');
