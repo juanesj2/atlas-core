@@ -1,14 +1,23 @@
 import { askAtlas } from '../ai/qwen.js';
-import * as googleTTS from 'google-tts-api';
-import { exec } from 'child_process';
-import util from 'util';
+import { MsEdgeTTS, OUTPUT_FORMAT } from 'msedge-tts';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-const execPromise = util.promisify(exec);
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Instancia de Edge TTS
+const tts = new MsEdgeTTS();
+let ttsReady = false;
+
+// Configurar la voz neuronal de Microsoft (Álvaro)
+tts.setMetadata('es-ES-AlvaroNeural', OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3)
+    .then(() => {
+        ttsReady = true;
+        console.log('[TTS] 🟢 Edge TTS (Álvaro Neural) inicializado correctamente.');
+    })
+    .catch(err => console.error('[TTS] Error inicializando Edge TTS:', err));
 
 /**
  * Función helper para enviar estados visuales y animaciones al satélite.
@@ -74,7 +83,7 @@ export const handleSatelliteConnection = (ws, req) => {
 };
 
 /**
- * Función que genera el audio TTS (Piper o Google) y lo envía junto con el texto a la pantalla/web
+ * Función que genera el audio usando Edge TTS y lo envía al cliente.
  */
 async function sendVoiceResponse(ws, text) {
     sendSatelliteState(ws, 'SPEAKING', 'waveform');
@@ -84,53 +93,41 @@ async function sendVoiceResponse(ws, text) {
     }
 
     try {
-        // Resolvemos las rutas de forma absoluta independiente de dónde se ejecutó npm run dev
-        const projectRoot = path.join(__dirname, '../../'); 
-        const piperDir = path.join(projectRoot, 'piper_tts');
-        const piperBin = path.join(piperDir, 'piper');
-        const piperModel = path.join(piperDir, 'voice.onnx');
-        const outputWav = path.join(projectRoot, `temp_tts_${Date.now()}.wav`);
+        if (!ttsReady) {
+            console.error('[TTS] Edge TTS no está listo todavía.');
+            setTimeout(() => sendSatelliteState(ws, 'IDLE', 'sleeping'), 2000);
+            return;
+        }
 
-        let audioBuffer = null;
-        let usedPiper = false;
+        console.log(`[TTS] ☁️ Generando voz con Edge TTS (Álvaro Neural)...`);
+        
+        // Escapar caracteres XML para evitar que rompan el SSML interno de Edge TTS
+        const safeText = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-        // Intentar usar PiperTTS
-        if (fs.existsSync(piperBin) && fs.existsSync(piperModel)) {
-            try {
-                console.log(`[TTS] ⚡ Intentando usar PiperTTS Local para: "${text.substring(0,30)}..."`);
-                const safeText = text.replace(/"/g, '\\"');
-                
-                // Ejecutamos Piper
-                await execPromise(`echo "${safeText}" | ${piperBin} --model ${piperModel} --output_file ${outputWav}`);
-                
-                if (fs.existsSync(outputWav)) {
-                    audioBuffer = fs.readFileSync(outputWav);
-                    fs.unlinkSync(outputWav); // Limpiar archivo temporal
-                    usedPiper = true;
-                    console.log(`[TTS] ✅ Audio generado con Piper con éxito.`);
-                }
-            } catch (piperError) {
-                console.error(`[TTS] ⚠️ Error crítico al ejecutar Piper: ${piperError.message}. Haciendo fallback a Google...`);
+        // Obtener el stream de audio
+        const { audioStream } = tts.toStream(safeText);
+        
+        const chunks = [];
+        audioStream.on('data', chunk => chunks.push(chunk));
+        
+        audioStream.on('close', () => {
+            const audioBuffer = Buffer.concat(chunks);
+            console.log(`[TTS] ✅ Audio generado con éxito (${audioBuffer.length} bytes).`);
+            
+            // Enviar el buffer binario por WebSocket al cliente o satélite
+            if (ws.readyState === ws.OPEN) {
+                ws.send(audioBuffer, { binary: true });
             }
-        } else {
-            console.log(`[TTS] ⚠️ Piper no encontrado en ${piperBin}`);
-        }
+            setTimeout(() => sendSatelliteState(ws, 'IDLE', 'sleeping'), 5000);
+        });
 
-        // Fallback a Google TTS si Piper falló o no existe
-        if (!usedPiper) {
-            console.log(`[TTS] ☁️ Usando Google TTS Fallback para: "${text.substring(0,30)}..."`);
-            const url = googleTTS.getAudioUrl(text, { lang: 'es', slow: false, host: 'https://translate.google.com' });
-            const audioRes = await fetch(url);
-            audioBuffer = await audioRes.arrayBuffer();
-        }
+        audioStream.on('error', (err) => {
+            console.error('[TTS] Error en el stream de audio:', err);
+            setTimeout(() => sendSatelliteState(ws, 'IDLE', 'sleeping'), 2000);
+        });
 
-        // Enviar binario (Música/Voz) al cliente
-        if (ws.readyState === ws.OPEN && audioBuffer) {
-            ws.send(audioBuffer, { binary: true });
-        }
     } catch (e) {
         console.error('[TTS] Error fatal generando voz:', e.message);
+        setTimeout(() => sendSatelliteState(ws, 'IDLE', 'sleeping'), 2000);
     }
-
-    setTimeout(() => sendSatelliteState(ws, 'IDLE', 'sleeping'), 5000);
 }
