@@ -29,6 +29,9 @@ export const handleSatelliteConnection = (ws, req) => {
     const clientIp = req ? req.socket.remoteAddress : 'unknown';
     console.log(`[Satellite] 🟢 Nueva conexión desde: ${clientIp}`);
 
+    // Historial a corto plazo para esta sesión
+    let conversationHistory = [];
+
     // Enviar estado inicial
     sendSatelliteState(ws, 'IDLE', 'sleeping');
 
@@ -41,7 +44,10 @@ export const handleSatelliteConnection = (ws, req) => {
                 const textTranscription = "¿Qué tiempo hace en Madrid?"; 
                 console.log(`[STT] Transcripción simulada: "${textTranscription}"`);
                 
-                const response = await askAtlas(textTranscription);
+                const response = await askAtlas(textTranscription, conversationHistory, 'invitado');
+                conversationHistory.push({ role: 'assistant', content: response.text });
+                if (conversationHistory.length > 20) conversationHistory.splice(0, 2);
+
                 await sendVoiceResponse(ws, response.text);
                 return;
             }
@@ -52,11 +58,24 @@ export const handleSatelliteConnection = (ws, req) => {
             if (data.event === 'WAKE_WORD_DETECTED') {
                 sendSatelliteState(ws, 'LISTENING', 'mic_active');
             } else if (data.event === 'TEXT_COMMAND' && data.text) {
-                console.log(`[Web Simulator] Comando de texto: "${data.text}", Voz preferida: ${data.voice}`);
+                const username = data.identity || 'invitado';
+                console.log(`[Web Simulator] Comando: "${data.text}", Voz: ${data.voice}, Usuario: ${username}`);
                 sendSatelliteState(ws, 'THINKING', 'pulsing_blue');
 
-                const response = await askAtlas(data.text);
-                await sendVoiceResponse(ws, response.text, data.voice);
+                const response = await askAtlas(data.text, conversationHistory, username);
+                
+                // Guardamos el historial del asistente
+                conversationHistory.push({ role: 'assistant', content: response.text });
+                if (conversationHistory.length > 20) conversationHistory.splice(0, 2);
+
+                if (data.isSpoken !== false) {
+                    await sendVoiceResponse(ws, response.text, data.voice);
+                } else {
+                    sendSatelliteState(ws, 'IDLE', 'sleeping');
+                    if (ws.readyState === ws.OPEN) {
+                        ws.send(JSON.stringify({ type: 'text_response', text: response.text }));
+                    }
+                }
             }
 
         } catch (error) {

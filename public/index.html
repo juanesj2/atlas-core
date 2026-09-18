@@ -42,6 +42,7 @@
     </div>
 
     <div class="controls">
+        <input type="text" id="identityInput" placeholder="Desconocido" value="" title="Identidad detectada" style="width: 100px; border-radius: 20px; border: none; padding: 10px; background: #333; color: white;">
         <select id="voiceSelect" title="Seleccionar Voz">
             <option value="male">👨 Voz Masculina (Álvaro)</option>
             <option value="female">👩 Voz Femenina (Elvira)</option>
@@ -63,6 +64,7 @@
         const input = document.getElementById('commandInput');
         const micButton = document.getElementById('micButton');
         const voiceSelect = document.getElementById('voiceSelect');
+        const identityInput = document.getElementById('identityInput');
 
         let isRecording = false;
         
@@ -88,7 +90,9 @@
                 ws.send(JSON.stringify({ 
                     event: 'TEXT_COMMAND', 
                     text: transcript,
-                    voice: voiceSelect.value 
+                    voice: voiceSelect.value,
+                    identity: identityInput.value.trim(),
+                    isSpoken: true
                 }));
             };
 
@@ -161,7 +165,9 @@
             ws.send(JSON.stringify({ 
                 event: 'TEXT_COMMAND', 
                 text: text,
-                voice: voiceSelect.value
+                voice: voiceSelect.value,
+                identity: identityInput.value.trim(),
+                isSpoken: false
             }));
             input.value = '';
         }

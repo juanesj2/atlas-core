@@ -1,3 +1,4 @@
+import { saveFact } from './memoryManager.js';
 import axios from 'axios';
 import SpotifyWebApi from 'spotify-web-api-node';
 import ffmpeg from 'fluent-ffmpeg';
@@ -51,6 +52,21 @@ async function ensureSpotifyToken() {
 // ==================================================
 
 export const atlasTools = [
+    {
+        type: 'function',
+        function: {
+            name: 'memorize_fact',
+            description: 'Guarda un hecho o dato importante sobre el usuario en la memoria a largo plazo. Usa esto cuando el usuario te diga su nombre, sus gustos, rutinas o cualquier dato que debas recordar para siempre.',
+            parameters: {
+                type: 'object',
+                properties: { 
+                    username: { type: 'string', description: 'El nombre del usuario al que pertenece el dato (ej. juanes, carlos, invitado)' },
+                    fact: { type: 'string', description: 'El hecho a recordar en tercera persona, ej. "El usuario tiene un perro llamado Rex."' } 
+                },
+                required: ['username', 'fact']
+            }
+        }
+    },
     {
         type: 'function',
         function: {
@@ -142,6 +158,7 @@ export const atlasTools = [
 
 export const executeLocalTool = async (action, args) => {
     switch (action) {
+        case 'memorize_fact': return saveFact(args.username, args.fact) ? `He guardado exitosamente el dato para ${args.username}.` : `No pude guardar el dato (quizás el usuario es inválido o el dato ya existía).`;
         case 'get_weather': return await fetchWeather(args.location);
         case 'play_music': return await playSpotifyMusic(args.query);
         case 'control_home_device': return await controlHomeAssistant(args.entity_id, args.action);
