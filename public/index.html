@@ -29,9 +29,37 @@
         button:hover { background-color: #0066cc; }
         .btn-mic { background-color: #ff0055; border-radius: 50%; width: 50px; height: 50px; font-size: 20px; display: flex; justify-content: center; align-items: center; flex-shrink: 0; }
         .btn-mic.recording { animation: pulse 0.5s infinite alternate; background-color: #ff0000; box-shadow: 0 0 15px red; }
+        
+        /* Modal Skills */
+        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 1000; justify-content: center; align-items: center; }
+        .modal-content { background: #222; width: 90%; max-width: 500px; padding: 20px; border-radius: 12px; border: 1px solid #444; color: white; display: flex; flex-direction: column; max-height: 80vh; }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid #444; padding-bottom: 10px; }
+        .modal-header h2 { margin: 0; }
+        .close-btn { background: transparent; color: #aaa; font-size: 24px; border: none; cursor: pointer; padding: 0; width: 30px; height: 30px; }
+        .close-btn:hover { color: white; background: transparent; }
+        .skills-list { overflow-y: auto; flex-grow: 1; display: flex; flex-direction: column; gap: 10px; padding-right: 10px; }
+        .skill-card { background: #333; border-radius: 8px; padding: 15px; display: flex; justify-content: space-between; align-items: center; border-left: 4px solid #555; }
+        .toggle-btn { padding: 8px 15px; border-radius: 20px; font-weight: bold; font-size: 12px; background: #555; color: white; }
+        .toggle-btn.active { background: #00ff00; color: #000; box-shadow: 0 0 10px rgba(0,255,0,0.3); }
     </style>
 </head>
 <body>
+    <!-- Modal Skills -->
+    <div class="modal-overlay" id="skillsModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>⚙️ Gestor de Extensiones</h2>
+                <button class="close-btn" onclick="closeSkillsManager()">&times;</button>
+            </div>
+            <div class="skills-list" id="skillsList">
+                <!-- Se rellena por JS -->
+            </div>
+            <div style="margin-top:20px; text-align:center; font-size:12px; color:#888;">
+                Para añadir nuevas skills, guarda el archivo .js en la carpeta src/skills/ del servidor.
+            </div>
+        </div>
+    </div>
+
     <div class="screen-container" id="screen">
         <div class="animation-overlay" id="animationLayer"></div>
         <div class="state-text" id="stateText">IDLE</div>
@@ -42,6 +70,7 @@
     </div>
 
     <div class="controls">
+        <button onclick="openSkillsManager()" title="Gestionar Extensiones" style="padding: 10px; background: #444;">⚙️</button>
         <input type="text" id="identityInput" placeholder="Desconocido" value="" title="Identidad detectada" style="width: 100px; border-radius: 20px; border: none; padding: 10px; background: #333; color: white;">
         <select id="voiceSelect" title="Seleccionar Voz">
             <option value="male">👨 Voz Masculina (Álvaro)</option>
@@ -174,6 +203,59 @@
 
         function handleEnter(e) {
             if (e.key === 'Enter') sendCommandText();
+        }
+
+        // --- GESTOR DE SKILLS ---
+        async function openSkillsManager() {
+            document.getElementById('skillsModal').style.display = 'flex';
+            loadSkillsList();
+        }
+
+        function closeSkillsManager() {
+            document.getElementById('skillsModal').style.display = 'none';
+        }
+
+        async function loadSkillsList() {
+            const listDiv = document.getElementById('skillsList');
+            listDiv.innerHTML = '<p>Cargando extensiones...</p>';
+            try {
+                const res = await fetch('/api/skills');
+                const skills = await res.json();
+                listDiv.innerHTML = '';
+                skills.forEach(s => {
+                    const skillCard = document.createElement('div');
+                    skillCard.className = 'skill-card';
+                    skillCard.innerHTML = `
+                        <div>
+                            <strong>${s.name.toUpperCase()}</strong>
+                            <div style="font-size:12px; color:#aaa; margin-top:5px;">Archivo: ${s.filename}</div>
+                        </div>
+                        <button class="toggle-btn ${s.active ? 'active' : ''}" onclick="toggleSkill('${s.filename}', ${!s.active})">
+                            ${s.active ? 'ON' : 'OFF'}
+                        </button>
+                    `;
+                    listDiv.appendChild(skillCard);
+                });
+            } catch (e) {
+                listDiv.innerHTML = '<p style="color:red">Error cargando skills.</p>';
+            }
+        }
+
+        async function toggleSkill(filename, activate) {
+            try {
+                const res = await fetch('/api/skills/toggle', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ filename, activate })
+                });
+                if (res.ok) {
+                    loadSkillsList(); // Recargar lista visual
+                } else {
+                    alert("Error al cambiar estado de la skill");
+                }
+            } catch (e) {
+                console.error(e);
+            }
         }
     </script>
 </body>

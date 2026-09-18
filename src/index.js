@@ -5,43 +5,55 @@ import { WebSocketServer } from 'ws';
 import { handleSatelliteConnection } from './socket/satellite.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import fs from 'fs';
-import { spotifyApi } from './ai/tools.js';
 
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const TOKEN_PATH = path.join(__dirname, '../spotify_tokens.json');
 
 const PORT = process.env.PORT || 8080;
 const MOCK_AI = process.env.MOCK_AI === 'true';
 
 const app = express();
 app.use(express.static(path.join(__dirname, '../public')));
+app.use(express.json()); // Permitir JSON body
 
-// === RUTAS PARA AUTENTICACIÓN DE SPOTIFY ===
-app.get('/spotify/login', (req, res) => {
-    const scopes = ['user-read-private', 'user-read-email', 'user-modify-playback-state', 'user-read-playback-state'];
-    const authorizeURL = spotifyApi.createAuthorizeURL(scopes, 'atlas-state');
-    res.redirect(authorizeURL);
+// === API GESTOR DE SKILLS ===
+import { loadSkills } from './ai/tools.js';
+
+app.get('/api/skills', (req, res) => {
+    const skillsDir = path.join(__dirname, 'skills');
+    if (!fs.existsSync(skillsDir)) return res.json([]);
+
+    const allFiles = fs.readdirSync(skillsDir);
+    const skillsList = allFiles
+        .filter(f => f.endsWith('.js') || f.endsWith('.disabled'))
+        .map(f => {
+            return {
+                filename: f,
+                name: f.replace('.js', '').replace('.disabled', ''),
+                active: f.endsWith('.js')
+            };
+        });
+    res.json(skillsList);
 });
 
-app.get('/callback', async (req, res) => {
-    const code = req.query.code;
+app.post('/api/skills/toggle', async (req, res) => {
+    const { filename, activate } = req.body;
+    const skillsDir = path.join(__dirname, 'skills');
+    
+    const currentPath = path.join(skillsDir, filename);
+    if (!fs.existsSync(currentPath)) return res.status(404).send('Archivo no encontrado');
+
+    const newFilename = activate ? filename.replace('.disabled', '') : filename + '.disabled';
+    const newPath = path.join(skillsDir, newFilename);
+
     try {
-        const data = await spotifyApi.authorizationCodeGrant(code);
-        const { access_token, refresh_token } = data.body;
-        
-        // Guardar tokens en el servidor
-        spotifyApi.setAccessToken(access_token);
-        spotifyApi.setRefreshToken(refresh_token);
-        fs.writeFileSync(TOKEN_PATH, JSON.stringify({ access_token, refresh_token }));
-        
-        res.send('<h1>¡Spotify Vinculado!</h1><p>Ya puedes cerrar esta ventana y pedirle música a Atlas.</p>');
+        fs.renameSync(currentPath, newPath);
+        await loadSkills(); // Recargar el cerebro de Qwen en caliente
+        res.json({ success: true, newFilename, active: activate });
     } catch (err) {
-        console.error('Error en Spotify Callback', err);
-        res.status(500).send('Error vinculando Spotify.');
+        res.status(500).json({ success: false, error: err.message });
     }
 });
 // ===========================================
@@ -56,9 +68,64 @@ console.log('='.repeat(40));
 // Inicialización del servidor WebSocket anclado al servidor HTTP de Express
 const wss = new WebSocketServer({ server });
 
+// === FLUJO DE AUTENTICACIÓN DE SPOTIFY ===
+// Para que Atlas pueda controlar tu música, necesita permisos tuyos
+app.get('/spotify/login', (req, res) => {
+    const scope = 'user-read-playback-state user-modify-playback-state';
+    const client_id = process.env.SPOTIFY_CLIENT_ID;
+    const redirect_uri = `http://localhost:${PORT}/spotify/callback`;
+    
+    if (!client_id) return res.send('Falta SPOTIFY_CLIENT_ID en el .env');
+
+    const authUrl = `https://accounts.spotify.com/authorize?response_type=code&client_id=${client_id}&scope=${encodeURIComponent(scope)}&redirect_uri=${encodeURIComponent(redirect_uri)}`;
+    res.redirect(authUrl);
+});
+
+app.get('/spotify/callback', async (req, res) => {
+    const code = req.query.code || null;
+    const client_id = process.env.SPOTIFY_CLIENT_ID;
+    const client_secret = process.env.SPOTIFY_CLIENT_SECRET;
+    const redirect_uri = `http://localhost:${PORT}/spotify/callback`;
+
+    if (!code) return res.send('Error: No se recibió código de Spotify');
+
+    try {
+        const authOptions = {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'Authorization': 'Basic ' + Buffer.from(client_id + ':' + client_secret).toString('base64')
+            },
+            body: new URLSearchParams({
+                code: code,
+                redirect_uri: redirect_uri,
+                grant_type: 'authorization_code'
+            })
+        };
+
+        const response = await fetch('https://accounts.spotify.com/api/token', authOptions);
+        const data = await response.json();
+
+        if (data.access_token) {
+            // Guardamos los tokens en un archivo local
+            const fs = await import('fs');
+            const path = await import('path');
+            const tokenPath = path.join(process.cwd(), 'spotify_tokens.json');
+            fs.writeFileSync(tokenPath, JSON.stringify(data, null, 2));
+            res.send('<h1>¡Éxito!</h1><p>Spotify autorizado correctamente. Ya puedes cerrar esta ventana.</p>');
+        } else {
+            res.send('Error en la autorización: ' + JSON.stringify(data));
+        }
+    } catch (error) {
+        res.send('Error conectando con Spotify: ' + error.message);
+    }
+});
+
+// Arrancar el servidor
 server.listen(PORT, () => {
     console.log(`🌍 Web Simulator running on http://localhost:${PORT}`);
     console.log(`📡 WebSocket server running on ws://localhost:${PORT}`);
+    console.log(`🎵 Spotify Login: http://localhost:${PORT}/spotify/login`);
 });
 
 
