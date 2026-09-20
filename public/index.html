@@ -48,7 +48,16 @@
             border: 4px solid #111;
             font-family: 'Share Tech Mono', monospace;
             flex-shrink: 0;
-            transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            cursor: pointer;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .screen-container:hover {
+            box-shadow: 0 0 70px rgba(0, 229, 255, 0.35), inset 0 0 25px rgba(0, 200, 255, 0.3);
+        }
+        .screen-container:active {
+            transform: scale(0.96);
         }
 
         .center-abs {
@@ -288,9 +297,9 @@
         .drawer-backdrop { display: none; }
         .drawer-header { display: none; }
         .mobile-action-bar { display: none; }
-        .mobile-settings-btn { display: none; }
+        .mobile-settings-btn, #mobileSettingsBtn, #mobileChatToggleBtn { display: none; }
 
-        /* --- RESPONSIVE MOBILE & TABLET PORTRAIT (< 900px) --- */
+        /* --- RESPONSIVE MOBILE & TABLET (< 900px) --- */
         @media (max-width: 900px) {
             body {
                 padding: 0;
@@ -333,36 +342,53 @@
                 box-sizing: border-box;
                 position: relative;
                 z-index: 10;
-                overflow: visible !important;
+                overflow: hidden !important;
             }
 
-            /* BOLA GRANDE CENTRADA */
+            /* BOLA GRANDE CENTRADA - NUNCA SE CORTA */
             .screen-container {
-                width: clamp(260px, 78vw, 340px) !important;
-                height: clamp(260px, 78vw, 340px) !important;
-                margin: auto 0 !important;
+                width: min(84vmin, calc(100dvh - 20px), 340px) !important;
+                height: min(84vmin, calc(100dvh - 20px), 340px) !important;
+                margin: auto !important;
                 border-width: 4px;
-                box-shadow: 0 0 60px rgba(0, 229, 255, 0.25), inset 0 0 35px rgba(0, 150, 255, 0.3) !important;
+                box-shadow: 0 0 50px rgba(0, 229, 255, 0.25), inset 0 0 30px rgba(0, 150, 255, 0.3) !important;
+                cursor: pointer;
+                user-select: none;
+                -webkit-tap-highlight-color: transparent;
+                transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.3s ease;
+            }
+            .screen-container:hover {
+                box-shadow: 0 0 75px rgba(0, 229, 255, 0.45), inset 0 0 35px rgba(0, 200, 255, 0.4) !important;
+            }
+            .screen-container:active {
+                transform: scale(0.95) !important;
             }
 
-            #mobileSettingsBtn {
+            #mobileSettingsBtn, #mobileChatToggleBtn {
                 position: absolute !important;
                 top: 15px !important;
-                right: 15px !important;
                 display: flex !important;
                 align-items: center;
                 justify-content: center;
                 width: 44px;
                 height: 44px;
                 border-radius: 14px;
-                background: rgba(15, 23, 42, 0.6);
+                background: rgba(15, 23, 42, 0.65);
                 backdrop-filter: blur(15px);
                 -webkit-backdrop-filter: blur(15px);
-                border: 1px solid rgba(255, 255, 255, 0.12);
+                border: 1px solid rgba(255, 255, 255, 0.14);
                 color: #fff;
                 font-size: 20px;
                 cursor: pointer;
                 z-index: 120;
+                transition: all 0.2s ease;
+            }
+            #mobileSettingsBtn { right: 15px !important; }
+            #mobileChatToggleBtn { left: 15px !important; }
+            #mobileSettingsBtn:active, #mobileChatToggleBtn:active {
+                transform: scale(0.92);
+                background: rgba(0, 229, 255, 0.2);
+                border-color: rgba(0, 229, 255, 0.4);
             }
 
             .settings-group {
@@ -481,9 +507,9 @@
                 left: 0 !important;
                 right: 0 !important;
                 width: 100% !important;
-                height: 78vh !important;
-                height: 78dvh !important;
-                max-height: 85vh !important;
+                height: 80vh !important;
+                height: 80dvh !important;
+                max-height: 88vh !important;
                 background: rgba(10, 15, 30, 0.95) !important;
                 backdrop-filter: blur(35px) !important;
                 -webkit-backdrop-filter: blur(35px) !important;
@@ -493,14 +519,47 @@
                 z-index: 200 !important;
                 display: flex !important;
                 flex-direction: column !important;
-                transform: translateY(100%) !important;
-                transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1) !important;
+                transform: translateY(calc(100% + 40px)) !important;
+                visibility: hidden;
+                transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.4s !important;
                 padding: 0 !important;
                 margin: 0 !important;
                 gap: 0 !important;
             }
             .panel-right.open {
                 transform: translateY(0) !important;
+                visibility: visible;
+            }
+
+            /* --- AJUSTES ESPECÍFICOS PARA MÓVIL EN HORIZONTAL (LANDSCAPE) --- */
+            @media (orientation: landscape) and (max-height: 550px) {
+                .panel-left {
+                    justify-content: center !important;
+                    padding: 0 !important;
+                }
+                .mobile-action-bar {
+                    display: none !important;
+                }
+                .screen-container {
+                    width: min(84vmin, calc(100dvh - 16px), 320px) !important;
+                    height: min(84vmin, calc(100dvh - 16px), 320px) !important;
+                    margin: auto !important;
+                }
+                .panel-right {
+                    height: 92vh !important;
+                    height: 92dvh !important;
+                }
+                .chat-container {
+                    padding: 10px 16px !important;
+                }
+                .input-group {
+                    padding: 8px 15px !important;
+                }
+                .settings-group {
+                    top: 60px;
+                    max-height: 80vh;
+                    overflow-y: auto;
+                }
             }
 
             .drawer-header {
@@ -642,9 +701,10 @@
         
         <!-- SIDEBAR IZQUIERDO -->
         <div class="panel-left" style="position: relative;">
-            <button id="mobileSettingsBtn" class="glass-btn" onclick="toggleMobileSettings()" style="display: none; position: absolute; top: 15px; right: 15px; padding: 10px 15px; font-size: 18px;" title="Ajustes">⚙️</button>
+            <button id="mobileChatToggleBtn" class="glass-btn" onclick="toggleMobileChat(true)" title="Abrir Chat & Comandos">💬</button>
+            <button id="mobileSettingsBtn" class="glass-btn" onclick="toggleMobileSettings()" title="Ajustes">⚙️</button>
             
-            <div class="screen-container" id="screen">
+            <div class="screen-container" id="screen" onclick="toggleMic()" title="Toca el núcleo para hablar con Atlas">
                 <svg class="svg-layer" viewBox="0 0 320 320" preserveAspectRatio="xMidYMid meet">
                     <defs>
                         <!-- Filtro de resplandor para los diales cian -->
@@ -1139,6 +1199,13 @@
         }
 
         async function toggleMic() {
+            // Si Atlas está hablando y pulsamos el núcleo, cortamos su voz de inmediato
+            if (currentAudio) {
+                currentAudio.pause();
+                currentAudio = null;
+                updateStateUI('IDLE');
+            }
+
             if (!recognition) {
                 appendMessage('atlas', '⚠️ Tu navegador actual no soporta reconocimiento de voz nativo (SpeechRecognition). Te sugerimos abrir la interfaz en <b>Google Chrome</b> o <b>Microsoft Edge</b>.');
                 return;
