@@ -66,7 +66,7 @@ import { broadcastVoiceMessage } from './socket/satellite.js';
 import { askAtlas } from './ai/qwen.js';
 
 app.post('/api/trigger', async (req, res) => {
-    const { event, context, username } = req.body;
+    const { event, context, username } = req.body || {};
     
     if (!event) return res.status(400).json({ error: 'Falta el campo event' });
 
