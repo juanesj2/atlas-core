@@ -124,6 +124,9 @@ export const handleSatelliteConnection = (ws, req) => {
 
             if (data.event === 'WAKE_WORD_DETECTED') {
                 sendSatelliteState(ws, 'LISTENING', 'mic_active');
+            } else if (data.event === 'STOP_SPEAKING') {
+                console.log('[Satellite] 🛑 STOP_SPEAKING recibido. Volviendo a IDLE.');
+                sendSatelliteState(ws, 'IDLE', 'sleeping');
             } else if (data.event === 'TEXT_COMMAND' && data.text) {
                 const username = data.identity || 'invitado';
                 console.log(`[Web Simulator] Comando: "${data.text}", Voz: ${data.voice}, Usuario: ${username}`);

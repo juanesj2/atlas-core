@@ -1109,6 +1109,27 @@
             }));
         }
 
+        function isInterruptionPhrase(text) {
+            if (!text) return false;
+            const clean = text
+                .toLowerCase()
+                .normalize("NFD")
+                .replace(/[\u0300-\u036f]/g, "")
+                .replace(/[^a-z0-9\s]/g, " ");
+            
+            // Detecta: atlas para, para, calla, callate, silencio, stop, basta, alto, detente, cancela, corta, etc.
+            return /\b(para|parate|paralo|calla|callate|silencio|stop|basta|alto|detente|cancela|cortar|shh|ya)\b/i.test(clean);
+        }
+
+        function ensureRecognitionRunning() {
+            if (!recognition || micBlocked || !wakeWordListening) return;
+            try {
+                if (!isRecording) {
+                    recognition.start();
+                }
+            } catch (err) {}
+        }
+
         if (SpeechRecognition) {
             recognition = new SpeechRecognition();
             recognition.lang = 'es-ES';
@@ -1140,22 +1161,37 @@
                 const currentText = (finalTranscript || interimTranscript).trim();
                 if (!currentText) return;
 
-                // 1. Si Atlas está hablando por los altavoces, comprobar interrupciones (Barge-in)
-                if (currentAudio) {
-                    const stopWords = ['atlas para', 'atlas calla', 'atlas silencio', 'atlas stop', 'atlas detente', 'para', 'calla', 'silencio', 'stop', 'detente'];
-                    const isInterruption = stopWords.some(w => currentText.includes(w));
-                    if (isInterruption) {
-                        console.log("[Web] 🛑 Interrupción detectada. Cortando audio.");
-                        currentAudio.pause();
-                        currentAudio = null;
+                // 1. INTERRUPCIÓN INSTANTÁNEA (Barge-in): Si Atlas está hablando o pensando y decimos "atlas para" / "calla" / "stop"
+                if (currentAudio || stateText.innerText === 'PENSANDO' || stateText.innerText === 'HABLANDO') {
+                    if (isInterruptionPhrase(currentText)) {
+                        console.log("[Barge-in] 🛑 ¡Interrupción por voz detectada! Cortando audio:", currentText);
+                        if (currentAudio) {
+                            currentAudio.pause();
+                            currentAudio.currentTime = 0;
+                            currentAudio = null;
+                        }
                         updateStateUI('IDLE');
-                        appendMessage('user', `(Interrumpe) ${currentText}`);
+                        appendMessage('user', `🛑 (Interrumpido: "${currentText}")`);
+                        if (ws.readyState === ws.OPEN) {
+                            ws.send(JSON.stringify({ event: 'STOP_SPEAKING' }));
+                        }
+                        return;
                     }
-                    return; // No procesar comandos nuevos mientras Atlas habla
+                    if (currentAudio) {
+                        return; // Si no es una orden de parada, no procesamos otros comandos mientras habla
+                    }
                 }
 
                 // 2. Si ya estábamos esperando el comando tras haber dicho "Atlas"
                 if (isAwaitingCommand) {
+                    // Si dice "para" o "cancela" mientras esperaba orden
+                    if (isInterruptionPhrase(currentText)) {
+                        clearTimeout(commandTimeout);
+                        isAwaitingCommand = false;
+                        updateStateUI('IDLE');
+                        return;
+                    }
+
                     if (finalTranscript.trim()) {
                         clearTimeout(commandTimeout);
                         isAwaitingCommand = false;
@@ -1219,12 +1255,8 @@
                 // Si la escucha continua de "Atlas" está habilitada, reiniciar automáticamente
                 if (wakeWordListening && !micBlocked) {
                     setTimeout(() => {
-                        try {
-                            if (wakeWordListening && !isRecording) {
-                                recognition.start();
-                            }
-                        } catch (e) {}
-                    }, 200);
+                        ensureRecognitionRunning();
+                    }, 150);
                 } else {
                     if (stateText.innerText === 'ESCUCHANDO') {
                         updateStateUI('IDLE');
@@ -1240,11 +1272,17 @@
         ws.onmessage = async (event) => {
             // Manejo de AUDIO (Binario) desde el TTS de Atlas
             if (event.data instanceof ArrayBuffer) {
-                if (currentAudio) currentAudio.pause();
+                if (currentAudio) {
+                    currentAudio.pause();
+                    currentAudio.currentTime = 0;
+                }
                 
                 const audioBlob = new Blob([event.data], { type: 'audio/mpeg' });
                 const audioUrl = URL.createObjectURL(audioBlob);
                 currentAudio = new Audio(audioUrl);
+                
+                // Asegurar que el micrófono sigue activo escuchando "Atlas para"
+                ensureRecognitionRunning();
                 
                 currentAudio.onended = () => {
                     currentAudio = null;
@@ -1265,7 +1303,7 @@
                     }
                 };
                 
-                currentAudio.play();
+                currentAudio.play().catch(e => console.warn("[Audio] Error al reproducir:", e));
                 return;
             }
 
