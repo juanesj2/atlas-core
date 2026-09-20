@@ -83,6 +83,8 @@ export const askAtlas = async (userPrompt, history = [], username = 'invitado') 
         ...history
     ];
 
+    const executedTools = [];
+
     try {
         while (true) {
             const response = await ollama.chat({
@@ -124,11 +126,12 @@ export const askAtlas = async (userPrompt, history = [], username = 'invitado') 
 
             if (pendingTools.length === 0) {
                 console.log('[Atlas AI] 🛑 Respuesta final generada.');
-                return { text: msg.content, toolCall: null };
+                return { text: msg.content, toolCall: executedTools.length > 0 ? executedTools : null };
             }
 
             for (const tool of pendingTools) {
                 console.log(`[Atlas AI] 🔧 Ejecutando Tool Call: ${tool.action}`, tool.args);
+                executedTools.push(tool);
                 let toolResult = "";
 
                 const localResult = await executeLocalTool(tool.action, tool.args);

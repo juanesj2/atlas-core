@@ -104,6 +104,16 @@ export const handleSatelliteConnection = (ws, req) => {
                     
                     const response = await askAtlas(textTranscription, conversationHistory, username);
                     
+                    // Si el usuario pidió registrar su voz desde un satélite físico (ESP32):
+                    const isEnroll = response.toolCall && response.toolCall.some(t => t.action === 'register_voice_profile');
+                    if (isEnroll && fs.existsSync(tempAudioPath)) {
+                        const voiceProfilesDir = path.join(__dirname, '../../voice_profiles');
+                        if (!fs.existsSync(voiceProfilesDir)) fs.mkdirSync(voiceProfilesDir, { recursive: true });
+                        const enrollTarget = path.join(voiceProfilesDir, 'juanes.wav');
+                        fs.copyFileSync(tempAudioPath, enrollTarget);
+                        console.log(`[Satellite] 🧬 Perfil biométrico guardado directamente desde satélite en ${enrollTarget}`);
+                    }
+
                     conversationHistory.push({ role: 'assistant', content: response.text });
                     if (conversationHistory.length > 20) conversationHistory.splice(0, 2);
 
@@ -143,6 +153,15 @@ export const handleSatelliteConnection = (ws, req) => {
 
                 // Limitar tamaño del historial para no saturar el contexto
                 if (conversationHistory.length > 20) conversationHistory.splice(0, 2);
+
+                // Si la herramienta register_voice_profile fue invocada por la IA:
+                const hasVoiceEnrollment = response.toolCall && response.toolCall.some(t => t.action === 'register_voice_profile');
+                if (hasVoiceEnrollment && ws.readyState === ws.OPEN) {
+                    ws.send(JSON.stringify({ 
+                        event: 'TRIGGER_VOICE_ENROLLMENT', 
+                        username: username !== 'invitado' ? username : 'Juanes' 
+                    }));
+                }
 
                 if (data.isSpoken !== false) {
                     await sendVoiceResponse(ws, response.text, data.voice);

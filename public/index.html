@@ -1306,9 +1306,34 @@
             return true;
         }
 
+        function isVoiceEnrollmentRequest(text) {
+            if (!text) return false;
+            const clean = text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9\s]/g, " ");
+            return /\b(registra|registrar|aprende|aprender|guarda|guardar|memoriza|memorizar|graba|grabar|crea|crear)\b.*\b(voz|huella|timbre)\b/i.test(clean) ||
+                   /\b(registrame|aprende mi voz|graba mi voz|memoriza mi voz|guardar mi voz|aprender mi voz)\b/i.test(clean);
+        }
+
         function sendUserVoiceCommand(text) {
             if (!text || !text.trim()) return;
             appendMessage('user', text);
+
+            if (isVoiceEnrollmentRequest(text)) {
+                console.log("[Voice] 🎙️ Petición de registro de voz detectada directamente por voz:", text);
+                updateStateUI('SPEAKING');
+                const user = identityInput.value.trim() || 'Juanes';
+                appendMessage('atlas', `¡Entendido! Iniciando el registro de tu huella de voz para <b>${user}</b>. Prepárate para hablar.`);
+                if ('speechSynthesis' in window) {
+                    try {
+                        window.speechSynthesis.cancel();
+                        const utt = new SpeechSynthesisUtterance("Iniciando registro de huella de voz. Prepárate para hablar.");
+                        utt.lang = 'es-ES';
+                        window.speechSynthesis.speak(utt);
+                    } catch(e) {}
+                }
+                triggerVoiceEnrollmentFlow(user);
+                return;
+            }
+
             updateStateUI('THINKING');
             ws.send(JSON.stringify({ 
                 event: 'TEXT_COMMAND', 
@@ -1804,6 +1829,20 @@
 
             if (data.state) {
                 updateStateUI(data.state);
+            }
+
+            if (data.event === 'TRIGGER_VOICE_ENROLLMENT') {
+                console.log("[Biometrics] 🎙️ Petición de registro de voz recibida para:", data.username);
+                const targetUser = data.username || identityInput.value.trim() || 'Juanes';
+                if (currentAudio && !currentAudio.paused) {
+                    const prevOnEnded = currentAudio.onended;
+                    currentAudio.onended = () => {
+                        if (prevOnEnded) prevOnEnded();
+                        setTimeout(() => triggerVoiceEnrollmentFlow(targetUser), 600);
+                    };
+                } else {
+                    setTimeout(() => triggerVoiceEnrollmentFlow(targetUser), 800);
+                }
             }
 
             if (data.type === 'text_response') {
@@ -2445,6 +2484,43 @@
             } finally {
                 enrollBtn.disabled = false;
                 testBtn.disabled = false;
+            }
+        }
+
+        // Flujo guiado automáticamente por voz para calibrar y registrar la huella
+        async function triggerVoiceEnrollmentFlow(username = 'Juanes') {
+            openVoiceProfilesModal();
+            const nameInput = document.getElementById('voiceProfileName');
+            if (nameInput) nameInput.value = username;
+
+            const statusEl = document.getElementById('enrollRecordStatus');
+            const enrollBtn = document.getElementById('startEnrollBtn');
+            const testBtn = document.getElementById('testIdentifyBtn');
+            if (!statusEl) return;
+
+            enrollBtn.disabled = true;
+            testBtn.disabled = true;
+
+            // 1. Cuenta atrás de preparación de 3 segundos
+            statusEl.style.color = '#00e5ff';
+            for (let c = 3; c > 0; c--) {
+                statusEl.innerHTML = `🎙️ <b>Calibración biométrica para "${username}"</b><br>Prepárate para hablar en: <span style="font-size:22px; color:#f59e0b; font-weight:800;">${c}...</span>`;
+                await new Promise(r => setTimeout(r, 1000));
+            }
+
+            enrollBtn.disabled = false;
+            testBtn.disabled = false;
+
+            // 2. Iniciar la grabación de 5 segundos
+            await startVoiceEnrollment();
+
+            // 3. Confirmación auditiva adicional
+            if ('speechSynthesis' in window) {
+                try {
+                    const utt = new SpeechSynthesisUtterance(`Tu huella de voz ha sido registrada con éxito, ${username}.`);
+                    utt.lang = 'es-ES';
+                    window.speechSynthesis.speak(utt);
+                } catch(e) {}
             }
         }
     </script>
