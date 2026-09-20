@@ -1185,8 +1185,11 @@
                 .replace(/[\u0300-\u036f]/g, "")
                 .replace(/[^a-z0-9\s]/g, " ");
             
-            // Detecta: atlas para, para, calla, callate, silencio, stop, basta, alto, detente, cancela, corta, etc.
-            return /\b(para|parate|paralo|calla|callate|silencio|stop|basta|alto|detente|cancela|cortar|shh|ya)\b/i.test(clean);
+            // Requiere obligatoriamente la invocación a Atlas Y la palabra de parada
+            const hasWakeWord = /\b(atlas|atla|adlas|atras)\b/i.test(clean);
+            const hasStopWord = /\b(para|parate|paralo|parale|calla|callate|silencio|stop|basta|alto|detente|cancela|cortar|corta)\b/i.test(clean);
+            
+            return hasWakeWord && hasStopWord;
         }
 
         function ensureRecognitionRunning() {
