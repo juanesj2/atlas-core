@@ -1251,11 +1251,11 @@
                     }
                 }
 
-                // SUPRESIÓN DE ECO: Si el audio acaba de terminar hace menos de 800ms o el micrófono recogió las palabras de Atlas
+                // SUPRESIÓN DE ECO: Si el audio acaba de terminar hace menos de 800ms o el micrófono recogió las palabras de Atlas (solo en los 3 seg tras hablar)
                 if (Date.now() - audioJustEndedTimestamp < 800) {
                     return;
                 }
-                if (lastAtlasSpokenText) {
+                if (Date.now() - audioJustEndedTimestamp < 3000 && lastAtlasSpokenText) {
                     const cleanAtlas = lastAtlasSpokenText.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9\s]/g, " ").trim();
                     const cleanUser = currentText.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9\s]/g, " ").trim();
                     if (cleanUser.length > 5 && (cleanAtlas.includes(cleanUser) || cleanUser.includes(cleanAtlas.slice(0, 30)))) {
@@ -1275,25 +1275,27 @@
                     }
 
                     if (finalTranscript.trim()) {
-                        clearTimeout(commandTimeout);
-                        isAwaitingCommand = false;
                         let cmd = finalTranscript.trim();
                         // Eliminamos cualquier charla previa antes de "atlas" y la propia palabra "atlas"
-                        const matchAfterAtlas = cmd.match(/^.*?\b(?:atlas|atla|adlas)\b[\s,.:;]*(.*)$/i);
+                        const matchAfterAtlas = cmd.match(/^.*?\b(?:(?:hola|oye|ok|ey)\s+)?(?:atlas|atla|adlas|atras)\b[\s,.:;?¿!¡-]*(.*)$/i);
                         if (matchAfterAtlas && matchAfterAtlas[1] !== undefined) {
                             cmd = matchAfterAtlas[1].trim();
                         }
-                        if (cmd) {
+                        // Solo enviamos si realmente hay una orden hablada tras la palabra clave
+                        if (cmd && cmd.length > 0) {
+                            clearTimeout(commandTimeout);
+                            isAwaitingCommand = false;
                             sendUserVoiceCommand(cmd);
-                        } else {
-                            updateStateUI('IDLE');
                         }
+                        // NOTA CRÍTICA: Si cmd está vacío, significa que el reconocedor acaba de finalizar
+                        // la pronunciación de la palabra "Atlas". NO volvemos a IDLE; mantenemos isAwaitingCommand = true
+                        // a la espera de que el usuario pronuncie la orden.
                     }
                     return;
                 }
 
                 // 3. Comprobar si en lo dicho aparece la palabra de activación "Atlas" (descartando cualquier charla previa)
-                const wakeMatch = currentText.match(/^.*?\b(?:(?:hola|oye|ok|ey)\s+)?(?:atlas|atla|adlas)\b[\s,.:;]*(.*)$/i);
+                const wakeMatch = currentText.match(/^.*?\b(?:(?:hola|oye|ok|ey)\s+)?(?:atlas|atla|adlas|atras)\b[\s,.:;?¿!¡-]*(.*)$/i);
                 if (wakeMatch) {
                     console.log("[WakeWord] 🗣️ ¡Palabra clave 'Atlas' detectada en:", currentText);
                     playWakeChime();
@@ -1301,9 +1303,10 @@
                     ws.send(JSON.stringify({ event: 'WAKE_WORD_DETECTED' }));
 
                     const restOfSentence = (wakeMatch[1] || '').trim();
-                    if (restOfSentence && finalTranscript.trim()) {
+                    if (restOfSentence && restOfSentence.length > 0 && finalTranscript.trim()) {
                         // El usuario dijo "... Atlas <comando>" todo de un tirón
                         isAwaitingCommand = false;
+                        clearTimeout(commandTimeout);
                         sendUserVoiceCommand(restOfSentence);
                     } else {
                         // El usuario solo dijo "Atlas", abrimos ventana de espera para la orden
