@@ -126,14 +126,21 @@ export const handleSatelliteConnection = (ws, req) => {
                 sendSatelliteState(ws, 'LISTENING', 'mic_active');
             } else if (data.event === 'STOP_SPEAKING') {
                 console.log('[Satellite] 🛑 STOP_SPEAKING recibido. Volviendo a IDLE.');
+                ws.isInterrupted = true;
                 sendSatelliteState(ws, 'IDLE', 'sleeping');
             } else if (data.event === 'TEXT_COMMAND' && data.text) {
                 const username = data.identity || 'invitado';
                 console.log(`[Web Simulator] Comando: "${data.text}", Voz: ${data.voice}, Usuario: ${username}`);
+                ws.isInterrupted = false;
                 sendSatelliteState(ws, 'THINKING', 'pulsing_blue');
 
                 const response = await askAtlas(data.text, conversationHistory, username);
                 
+                if (ws.isInterrupted) {
+                    console.log('[Satellite] 🛑 Respuesta cancelada por interrupción del usuario.');
+                    return;
+                }
+
                 // Limitar tamaño del historial para no saturar el contexto
                 if (conversationHistory.length > 20) conversationHistory.splice(0, 2);
 
