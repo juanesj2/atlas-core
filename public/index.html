@@ -818,6 +818,46 @@
         </div>
     </div>
 
+    <!-- Modal Huella de Voz (Biometría) -->
+    <div class="modal-overlay" id="voiceProfilesModal">
+        <div class="modal-content" style="width: 520px; max-width: 95vw;">
+            <div class="modal-header">
+                <h2>🎙️ Huella de Voz (Biometría)</h2>
+                <button class="close-btn" onclick="closeVoiceProfilesModal()">&times;</button>
+            </div>
+            
+            <!-- Registro de nueva huella de voz -->
+            <div style="background: rgba(0, 229, 255, 0.05); border: 1px solid rgba(0, 229, 255, 0.2); padding: 16px; border-radius: 14px; margin-bottom: 16px;">
+                <h3 style="font-size: 14px; margin-top: 0; margin-bottom: 8px; color: #00e5ff;">🧬 Registrar Nueva Huella de Voz</h3>
+                <p style="font-size: 12px; color: #94a3b8; margin-top: 0; margin-bottom: 12px; line-height: 1.4;">
+                    Atlas usará su red neuronal ECAPA-TDNN para reconocer quién le habla por el timbre exacto de tu voz.
+                </p>
+                <div style="display: flex; gap: 10px; margin-bottom: 12px;">
+                    <input type="text" id="voiceProfileName" class="glass-input" placeholder="Tu nombre (ej: Juanes)" value="Juanes" style="flex: 1; padding: 10px;">
+                </div>
+
+                <div id="enrollRecordStatus" style="font-size: 12px; color: #00e5ff; text-align: center; margin-bottom: 10px; min-height: 20px; font-weight: 600;"></div>
+
+                <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                    <button id="startEnrollBtn" class="glass-btn" onclick="startVoiceEnrollment()" style="flex: 1; justify-content: center; background: rgba(0, 229, 255, 0.15); border-color: rgba(0, 229, 255, 0.5); color: #00e5ff; font-weight: 600; padding: 10px;">
+                        ⏺️ Grabar Mi Voz (5s)
+                    </button>
+                    <button id="testIdentifyBtn" class="glass-btn" onclick="testVoiceIdentification()" style="flex: 1; justify-content: center; background: rgba(168, 85, 247, 0.15); border-color: rgba(168, 85, 247, 0.5); color: #c084fc; font-weight: 600; padding: 10px;">
+                        🔍 Probar Reconocimiento (4s)
+                    </button>
+                </div>
+            </div>
+
+            <div class="settings-label" style="margin-bottom: 10px; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #64748b;">Perfiles de Voz Guardados</div>
+            <div class="skills-list" id="voiceProfilesList" style="max-height: 220px; overflow-y: auto;">
+                <!-- Se rellena por JS -->
+            </div>
+            
+            <div id="identifyResultBox" style="display: none; margin-top: 15px; padding: 12px; border-radius: 10px; background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(255,255,255,0.1); font-size: 12px; text-align: center;">
+            </div>
+        </div>
+    </div>
+
     <!-- MAIN DASHBOARD -->
     <div class="app-container">
         
@@ -1036,6 +1076,9 @@
                         ⏰ Rutinas
                     </button>
                 </div>
+                <button class="glass-btn" onclick="openVoiceProfilesModal()" style="width:100%; justify-content:center; gap:8px; border-color: rgba(0, 229, 255, 0.4); color: #00e5ff;">
+                    🎙️ Huella de Voz (Biometría)
+                </button>
                 <input type="text" id="identityInput" class="glass-input" placeholder="Nombre (ej: Juanes)" value="" title="Identidad detectada">
                 <select id="voiceSelect" class="glass-input" title="Seleccionar Voz">
                     <option value="male">👨 Voz Álvaro</option>
@@ -2101,6 +2144,307 @@
                 }
             } catch (e) {
                 console.error(e);
+            }
+        }
+
+        // ==========================================
+        // GESTOR DE PERFILES BIOMÉTRICOS DE VOZ
+        // ==========================================
+        function openVoiceProfilesModal() {
+            const modal = document.getElementById('voiceProfilesModal');
+            if (modal) {
+                modal.classList.add('open');
+                loadVoiceProfilesList();
+                const identifyBox = document.getElementById('identifyResultBox');
+                if (identifyBox) identifyBox.style.display = 'none';
+            }
+        }
+
+        function closeVoiceProfilesModal() {
+            const modal = document.getElementById('voiceProfilesModal');
+            if (modal) modal.classList.remove('open');
+        }
+
+        async function loadVoiceProfilesList() {
+            const listDiv = document.getElementById('voiceProfilesList');
+            if (!listDiv) return;
+            listDiv.innerHTML = '<p style="color:#94a3b8; text-align:center;">Cargando perfiles...</p>';
+
+            try {
+                const res = await fetch('/api/voice-profiles');
+                const data = await res.json();
+                const profiles = data.profiles || [];
+
+                if (profiles.length === 0) {
+                    listDiv.innerHTML = '<p style="color:#94a3b8; text-align:center; padding:10px;">No hay perfiles de voz guardados.<br><span style="font-size:11px; color:#64748b;">Graba tu voz arriba para que Atlas te reconozca automáticamente.</span></p>';
+                    return;
+                }
+
+                listDiv.innerHTML = '';
+                profiles.forEach(p => {
+                    const card = document.createElement('div');
+                    card.className = 'skill-card';
+                    card.innerHTML = `
+                        <div style="flex: 1;">
+                            <div class="skill-title">👤 ${p.name} <span style="font-size: 10px; color:#00e5ff; margin-left:6px;">[Activo]</span></div>
+                            <div class="skill-file">📁 ${p.filename} (${Math.round(p.size / 1024)} KB)</div>
+                        </div>
+                        <div>
+                            <button class="toggle-btn" style="color:#ef4444; border: 1px solid rgba(239, 68, 68, 0.4);" onclick="deleteVoiceProfile('${p.id}')" title="Eliminar huella">
+                                🗑️
+                            </button>
+                        </div>
+                    `;
+                    listDiv.appendChild(card);
+                });
+            } catch (e) {
+                listDiv.innerHTML = '<p style="color:#ef4444; text-align:center;">Error al cargar perfiles.</p>';
+            }
+        }
+
+        async function deleteVoiceProfile(id) {
+            if (!confirm(`¿Eliminar la huella de voz de "${id}"?`)) return;
+            try {
+                const res = await fetch(`/api/voice-profiles/${id}`, { method: 'DELETE' });
+                if (res.ok) loadVoiceProfilesList();
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        // Graba audio en PCM Mono 16kHz y genera un Blob WAV estándar
+        async function recordRawWav(durationMs, statusCallback) {
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+                audio: { 
+                    channelCount: 1, 
+                    echoCancellation: true, 
+                    noiseSuppression: true, 
+                    autoGainControl: true 
+                } 
+            });
+
+            const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+            const audioCtx = new AudioContextClass();
+            const source = audioCtx.createMediaStreamSource(stream);
+            const scriptNode = audioCtx.createScriptProcessor(4096, 1, 1);
+
+            const collectedSamples = [];
+            const originalSampleRate = audioCtx.sampleRate;
+
+            scriptNode.onaudioprocess = (e) => {
+                const inputData = e.inputBuffer.getChannelData(0);
+                collectedSamples.push(new Float32Array(inputData));
+            };
+
+            source.connect(scriptNode);
+            scriptNode.connect(audioCtx.destination);
+
+            const startTime = Date.now();
+            const interval = setInterval(() => {
+                const elapsed = Date.now() - startTime;
+                const remaining = Math.max(0, Math.ceil((durationMs - elapsed) / 1000));
+                if (statusCallback) statusCallback(remaining);
+            }, 200);
+
+            await new Promise(r => setTimeout(r, durationMs));
+
+            clearInterval(interval);
+            source.disconnect();
+            scriptNode.disconnect();
+            stream.getTracks().forEach(t => t.stop());
+            await audioCtx.close();
+
+            // Unir todos los buffers float32
+            let totalLength = 0;
+            for (const chunk of collectedSamples) totalLength += chunk.length;
+            const merged = new Float32Array(totalLength);
+            let offset = 0;
+            for (const chunk of collectedSamples) {
+                merged.set(chunk, offset);
+                offset += chunk.length;
+            }
+
+            // Remuestrear a 16000 Hz si es necesario
+            const targetSampleRate = 16000;
+            let finalSamples = merged;
+            if (originalSampleRate !== targetSampleRate) {
+                const ratio = originalSampleRate / targetSampleRate;
+                const newLength = Math.round(merged.length / ratio);
+                finalSamples = new Float32Array(newLength);
+                for (let i = 0; i < newLength; i++) {
+                    const origIndex = Math.round(i * ratio);
+                    finalSamples[i] = merged[Math.min(origIndex, merged.length - 1)];
+                }
+            }
+
+            // Codificar WAV 16-bit PCM RIFF
+            const wavBuffer = new ArrayBuffer(44 + finalSamples.length * 2);
+            const view = new DataView(wavBuffer);
+
+            function writeStr(offset, str) {
+                for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
+            }
+
+            writeStr(0, 'RIFF');
+            view.setUint32(4, 36 + finalSamples.length * 2, true);
+            writeStr(8, 'WAVE');
+            writeStr(12, 'fmt ');
+            view.setUint32(16, 16, true);
+            view.setUint16(20, 1, true); // PCM
+            view.setUint16(22, 1, true); // Mono
+            view.setUint32(24, targetSampleRate, true);
+            view.setUint32(28, targetSampleRate * 2, true);
+            view.setUint16(32, 2, true); // Block align
+            view.setUint16(34, 16, true); // 16 bits
+            writeStr(36, 'data');
+            view.setUint32(40, finalSamples.length * 2, true);
+
+            let dataOffset = 44;
+            for (let i = 0; i < finalSamples.length; i++) {
+                let s = Math.max(-1, Math.min(1, finalSamples[i]));
+                view.setInt16(dataOffset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+                dataOffset += 2;
+            }
+
+            return new Blob([view], { type: 'audio/wav' });
+        }
+
+        function blobToBase64(blob) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onloadend = () => {
+                    const base64data = reader.result.split(',')[1];
+                    resolve(base64data);
+                };
+                reader.onerror = reject;
+                reader.readAsDataURL(blob);
+            });
+        }
+
+        async function startVoiceEnrollment() {
+            const nameInput = document.getElementById('voiceProfileName');
+            const name = (nameInput.value || '').trim();
+            if (!name) {
+                alert('Por favor, introduce tu nombre.');
+                return;
+            }
+
+            const statusEl = document.getElementById('enrollRecordStatus');
+            const enrollBtn = document.getElementById('startEnrollBtn');
+            const testBtn = document.getElementById('testIdentifyBtn');
+
+            enrollBtn.disabled = true;
+            testBtn.disabled = true;
+
+            try {
+                statusEl.innerHTML = `🔴 <b>Grabando tu voz (5s)...</b> Di una frase con calma: <br><i>"Hola Atlas, soy ${name} y este es mi perfil de voz."</i>`;
+                statusEl.style.color = '#ff2d55';
+
+                const wavBlob = await recordRawWav(5000, (remaining) => {
+                    statusEl.innerHTML = `🔴 <b>Grabando (${remaining}s)...</b> Di: <i>"Hola Atlas, soy ${name}."</i>`;
+                });
+
+                statusEl.innerHTML = '⏳ <b>Procesando y guardando huella acústica...</b>';
+                statusEl.style.color = '#00e5ff';
+
+                const base64Audio = await blobToBase64(wavBlob);
+                const res = await fetch('/api/voice-profiles/enroll', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, audioBase64: base64Audio })
+                });
+
+                const result = await res.json();
+                if (res.ok && result.success) {
+                    statusEl.innerHTML = `✅ <b>¡Huella de voz registrada con éxito para ${name}!</b>`;
+                    statusEl.style.color = '#4ade80';
+                    loadVoiceProfilesList();
+                    const idInput = document.getElementById('identityInput');
+                    if (idInput) idInput.value = name;
+                } else {
+                    statusEl.innerHTML = `❌ Error: ${result.error || 'No se pudo guardar'}`;
+                    statusEl.style.color = '#ef4444';
+                }
+            } catch (err) {
+                console.error(err);
+                statusEl.innerHTML = `⚠️ Error con el micrófono: ${err.message}`;
+                statusEl.style.color = '#ef4444';
+            } finally {
+                enrollBtn.disabled = false;
+                testBtn.disabled = false;
+            }
+        }
+
+        async function testVoiceIdentification() {
+            const statusEl = document.getElementById('enrollRecordStatus');
+            const resultBox = document.getElementById('identifyResultBox');
+            const enrollBtn = document.getElementById('startEnrollBtn');
+            const testBtn = document.getElementById('testIdentifyBtn');
+
+            enrollBtn.disabled = true;
+            testBtn.disabled = true;
+            resultBox.style.display = 'none';
+
+            try {
+                statusEl.innerHTML = '🟣 <b>Habla ahora durante 4 segundos...</b> (Di cualquier frase)';
+                statusEl.style.color = '#c084fc';
+
+                const wavBlob = await recordRawWav(4000, (remaining) => {
+                    statusEl.innerHTML = `🟣 <b>Escuchando (${remaining}s)...</b> Di cualquier cosa.`;
+                });
+
+                statusEl.innerHTML = '🧠 <b>Comparando con la red neuronal de locutores...</b>';
+                statusEl.style.color = '#00e5ff';
+
+                const base64Audio = await blobToBase64(wavBlob);
+                const res = await fetch('/api/voice-profiles/identify', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ audioBase64: base64Audio })
+                });
+
+                const result = await res.json();
+                resultBox.style.display = 'block';
+
+                if (res.ok && result.success) {
+                    const isIdentified = result.user && result.user.toLowerCase() !== 'invitado' && result.user.toLowerCase() !== 'desconocido';
+                    if (isIdentified) {
+                        resultBox.innerHTML = `
+                            <div style="color:#4ade80; font-weight:700; font-size:14px; margin-bottom:4px;">
+                                🎯 ¡Identificado como: ${result.user}!
+                            </div>
+                            <div style="color:#94a3b8; font-size:12px;">
+                                Similitud biométrica: <b>${result.score}</b> (Umbral: 0.28)
+                            </div>
+                            ${result.text ? `<div style="color:#e2e8f0; margin-top:4px; font-style:italic;">"${result.text}"</div>` : ''}
+                        `;
+                        statusEl.innerHTML = '✅ Reconocimiento completado.';
+                        statusEl.style.color = '#4ade80';
+                        const idInput = document.getElementById('identityInput');
+                        if (idInput) idInput.value = result.user;
+                    } else {
+                        resultBox.innerHTML = `
+                            <div style="color:#f59e0b; font-weight:700; font-size:13px; margin-bottom:4px;">
+                                👤 Clasificado como: Invitado
+                            </div>
+                            <div style="color:#94a3b8; font-size:12px;">
+                                Similitud máxima alcanzada: <b>${result.score || 0}</b> (por debajo del umbral)
+                            </div>
+                        `;
+                        statusEl.innerHTML = '⚠️ Voz no coincide con ningún perfil registrado.';
+                        statusEl.style.color = '#f59e0b';
+                    }
+                } else {
+                    resultBox.innerHTML = `<span style="color:#ef4444;">${result.message || 'Servicio biométrico no respondió.'}</span>`;
+                    statusEl.innerHTML = '';
+                }
+            } catch (err) {
+                console.error(err);
+                statusEl.innerHTML = `⚠️ Error al probar: ${err.message}`;
+                statusEl.style.color = '#ef4444';
+            } finally {
+                enrollBtn.disabled = false;
+                testBtn.disabled = false;
             }
         }
     </script>

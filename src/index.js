@@ -138,6 +138,108 @@ console.log('='.repeat(40));
 // Inicialización del servidor WebSocket anclado al servidor HTTP de Express
 const wss = new WebSocketServer({ server });
 
+// === API BIOMETRÍA Y PERFILES DE VOZ ===
+const voiceProfilesDir = path.join(__dirname, '../voice_profiles');
+if (!fs.existsSync(voiceProfilesDir)) {
+    fs.mkdirSync(voiceProfilesDir, { recursive: true });
+}
+
+// Listar perfiles existentes
+app.get('/api/voice-profiles', (req, res) => {
+    try {
+        const files = fs.readdirSync(voiceProfilesDir)
+            .filter(f => f.endsWith('.wav'))
+            .map(f => {
+                const rawName = f.replace('.wav', '').replace(/_/g, ' ');
+                const stat = fs.statSync(path.join(voiceProfilesDir, f));
+                return {
+                    id: f.replace('.wav', ''),
+                    name: rawName.charAt(0).toUpperCase() + rawName.slice(1),
+                    filename: f,
+                    size: stat.size,
+                    createdAt: stat.mtime
+                };
+            });
+        res.json({ profiles: files });
+    } catch (e) {
+        console.error('[Biometrics] Error listando perfiles:', e);
+        res.status(500).json({ error: 'Error listando perfiles de voz' });
+    }
+});
+
+// Registrar o actualizar un perfil de voz con audio Base64
+app.post('/api/voice-profiles/enroll', (req, res) => {
+    try {
+        const { name, audioBase64 } = req.body || {};
+        if (!name || !audioBase64) {
+            return res.status(400).json({ error: 'Nombre y audio requeridos' });
+        }
+
+        const safeName = name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "_");
+        const filePath = path.join(voiceProfilesDir, `${safeName}.wav`);
+        
+        const audioBuffer = Buffer.from(audioBase64, 'base64');
+        fs.writeFileSync(filePath, audioBuffer);
+        console.log(`[Biometrics] 👤 Nuevo perfil de voz guardado: ${safeName}.wav (${audioBuffer.length} bytes)`);
+
+        res.json({ success: true, name: safeName, size: audioBuffer.length });
+    } catch (e) {
+        console.error('[Biometrics] Error guardando perfil:', e);
+        res.status(500).json({ error: 'Error guardando perfil de voz' });
+    }
+});
+
+// Eliminar un perfil
+app.delete('/api/voice-profiles/:id', (req, res) => {
+    try {
+        const safeName = req.params.id.replace(/[^a-z0-9_]/gi, '');
+        const filePath = path.join(voiceProfilesDir, `${safeName}.wav`);
+        if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+            console.log(`[Biometrics] 🗑️ Perfil eliminado: ${safeName}.wav`);
+        }
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ error: 'Error eliminando perfil' });
+    }
+});
+
+// Verificar audio contra perfiles (Identificación biométrica)
+app.post('/api/voice-profiles/identify', async (req, res) => {
+    try {
+        const { audioBase64 } = req.body || {};
+        if (!audioBase64) {
+            return res.status(400).json({ error: 'Audio requerido' });
+        }
+
+        const tempIncoming = path.join(__dirname, '../temp_identify.wav');
+        fs.writeFileSync(tempIncoming, Buffer.from(audioBase64, 'base64'));
+
+        // Consultar el microservicio de biometría en Python
+        try {
+            const pyRes = await fetch('http://127.0.0.1:8000/process_audio', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ filepath: tempIncoming })
+            });
+
+            if (pyRes.ok) {
+                const data = await pyRes.json();
+                try { fs.unlinkSync(tempIncoming); } catch (e) {}
+                return res.json({ success: true, user: data.user, score: data.score, text: data.text });
+            }
+        } catch (err) {
+            console.warn('[Biometrics] Microservicio Python no disponible:', err.message);
+        }
+
+        try { fs.unlinkSync(tempIncoming); } catch (e) {}
+        res.json({ success: false, user: 'invitado', message: 'Servidor biométrico no activo' });
+    } catch (e) {
+        console.error('[Biometrics] Error en identificación:', e);
+        res.status(500).json({ error: 'Error procesando biometría' });
+    }
+});
+
 // === FLUJO DE AUTENTICACIÓN DE SPOTIFY ===
 // Para que Atlas pueda controlar tu música, necesita permisos tuyos
 app.get('/spotify/login', (req, res) => {
