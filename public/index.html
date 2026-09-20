@@ -1206,6 +1206,8 @@
         let audioJustEndedTimestamp = 0;
         let isAudioPaused = false;
         let pauseResumeTimeout = null;
+        let speechSilenceTimer = null;
+        let isEnrollRecordingActive = false;
 
         function showMicPermissionHelp() {
             appendMessage('atlas', `
@@ -1321,12 +1323,13 @@
             if (isVoiceEnrollmentRequest(text)) {
                 console.log("[Voice] 🎙️ Petición de registro de voz detectada directamente por voz:", text);
                 updateStateUI('SPEAKING');
-                const user = identityInput.value.trim() || 'Juanes';
+                let user = (identityInput && identityInput.value.trim()) || 'Juanes';
+                if (!user || user.toLowerCase() === 'invitado') user = 'Juanes';
                 appendMessage('atlas', `¡Entendido! Iniciando el registro de tu huella de voz para <b>${user}</b>. Prepárate para hablar.`);
                 if ('speechSynthesis' in window) {
                     try {
                         window.speechSynthesis.cancel();
-                        const utt = new SpeechSynthesisUtterance("Iniciando registro de huella de voz. Prepárate para hablar.");
+                        const utt = new SpeechSynthesisUtterance("Abriendo calibrador biométrico. Prepárate para hablar.");
                         utt.lang = 'es-ES';
                         window.speechSynthesis.speak(utt);
                     } catch(e) {}
@@ -1386,18 +1389,34 @@
         }
 
         function ensureRecognitionRunning() {
-            if (!recognition || micBlocked || !wakeWordListening) return;
+            if (!recognition || micBlocked || !wakeWordListening || isEnrollRecordingActive) return;
             try {
                 recognition.start();
             } catch (err) {
                 if (err.name !== 'InvalidStateError') {
                     setTimeout(() => {
-                        if (wakeWordListening && !micBlocked) {
+                        if (wakeWordListening && !micBlocked && !isEnrollRecordingActive) {
                             try { recognition.start(); } catch (e) {}
                         }
                     }, 350);
                 }
             }
+        }
+
+        function dispatchVoiceCommand(cmd) {
+            if (!cmd || !cmd.trim()) return;
+            clearTimeout(speechSilenceTimer);
+            speechSilenceTimer = null;
+            clearTimeout(commandTimeout);
+            isAwaitingCommand = false;
+
+            // Purgar inmediatamente el búfer del micro para reiniciar el reconocedor sin acumulación
+            if (recognition) {
+                try { recognition.abort(); } catch (e) {}
+            }
+            setTimeout(() => ensureRecognitionRunning(), 150);
+
+            sendUserVoiceCommand(cmd.trim());
         }
 
         if (SpeechRecognition) {
@@ -1431,12 +1450,13 @@
                 const currentText = (finalTranscript || interimTranscript).trim();
                 if (!currentText) return;
 
-                // 0. CANCELACIÓN MIENTRAS PIENSA (si el usuario dice "para" o "cancela" mientras Atlas está procesando en Ollama)
+                // 0. CANCELACIÓN MIENTRAS PIENSA
                 if (screen.classList.contains('state-thinking') || stateText.innerText === 'PENSANDO') {
                     if (isStopPhrase(currentText)) {
                         console.log("[Thinking] 🛑 Cancelación por voz mientras pensaba:", currentText);
                         updateStateUI('IDLE');
                         isAwaitingCommand = false;
+                        clearTimeout(speechSilenceTimer);
                         if (ws.readyState === ws.OPEN) {
                             ws.send(JSON.stringify({ event: 'STOP_SPEAKING' }));
                         }
@@ -1449,12 +1469,13 @@
                     }
                 }
 
-                // 1. CONTROL POR VOZ MIENTRAS ATLAS HABLA (Barge-in / Pausa / Parada):
+                // 1. CONTROL POR VOZ MIENTRAS ATLAS HABLA (Barge-in / Pausa / Parada)
                 if (currentAudio && !currentAudio.paused) {
-                    // Parada definitiva: si dice "para", "calla", "silencio", "stop", "cancela", "basta"
+                    // Parada definitiva inmediata
                     if (isStopPhrase(currentText)) {
                         console.log("[Barge-in] 🛑 ¡Parada por voz detectada! Cortando audio:", currentText);
                         clearTimeout(pauseResumeTimeout);
+                        clearTimeout(speechSilenceTimer);
                         currentAudio.pause();
                         currentAudio.currentTime = 0;
                         currentAudio = null;
@@ -1465,7 +1486,6 @@
                         if (ws.readyState === ws.OPEN) {
                             ws.send(JSON.stringify({ event: 'STOP_SPEAKING' }));
                         }
-                        // Purgar inmediatamente el búfer del micro para no retener palabras del altavoz
                         if (recognition) {
                             try { recognition.abort(); } catch (e) {}
                         }
@@ -1473,20 +1493,18 @@
                         return;
                     }
 
-                    // Si lo que se escucha durante la locución coincide con lo que el propio Atlas está diciendo por el altavoz, descartar
                     if (isSpokenTextEcho(currentText)) {
-                        console.log("[Barge-in] 🔇 Eco o auto-mención del altavoz descartado:", currentText);
                         return;
                     }
 
-                    // Pausa con el nombre: si mientras habla escucha "Atlas" (o "espera", "pausa"):
+                    // Pausa al escuchar "Atlas" o "espera"
                     if (hasWakeWord(currentText) || /\b(pausa|espera|esperate)\b/i.test(currentText)) {
-                        console.log("[Barge-in] ⏸️ 'Atlas' escuchado durante la locución. Pausando y esperando:", currentText);
+                        console.log("[Barge-in] ⏸️ 'Atlas' escuchado durante la locución. Pausando audio:", currentText);
                         clearTimeout(pauseResumeTimeout);
+                        clearTimeout(speechSilenceTimer);
                         currentAudio.pause();
                         isAudioPaused = true;
 
-                        // Purgar inmediatamente el búfer del micro para que no se cuele la palabra que el altavoz acababa de pronunciar
                         if (recognition) {
                             try { recognition.abort(); } catch (e) {}
                         }
@@ -1496,7 +1514,6 @@
                         updateStateUI('LISTENING');
                         isAwaitingCommand = true;
 
-                        // Si el usuario no dice nada en 6 segundos, reanudar la locución automáticamente por donde lo dejó
                         pauseResumeTimeout = setTimeout(() => {
                             if (isAudioPaused && currentAudio) {
                                 console.log("[Voice] ▶️ Tiempo agotado sin orden. Reanudando audio...");
@@ -1509,16 +1526,15 @@
                         return;
                     }
 
-                    // Si no es parada ni wake word, ignorar el audio ambiental mientras habla
                     return;
                 }
 
-                // 2. GESTIÓN MIENTRAS EL AUDIO ESTÁ EN PAUSA (tras haber dicho "Atlas"):
+                // 2. GESTIÓN MIENTRAS EL AUDIO ESTÁ EN PAUSA
                 if (isAudioPaused && currentAudio) {
-                    // Si el usuario dice "para", "calla", "cancela" mientras estaba en pausa
                     if (isStopPhrase(currentText)) {
                         console.log("[Voice] 🛑 Cancelación definitiva durante pausa:", currentText);
                         clearTimeout(pauseResumeTimeout);
+                        clearTimeout(speechSilenceTimer);
                         isAudioPaused = false;
                         isAwaitingCommand = false;
                         currentAudio.pause();
@@ -1536,10 +1552,10 @@
                         return;
                     }
 
-                    // Si el usuario le dice "continúa" o "sigue"
                     if (isResumePhrase(currentText)) {
                         console.log("[Voice] ▶️ Reanudando locución a petición del usuario:", currentText);
                         clearTimeout(pauseResumeTimeout);
+                        clearTimeout(speechSilenceTimer);
                         isAudioPaused = false;
                         isAwaitingCommand = false;
                         updateStateUI('SPEAKING');
@@ -1548,67 +1564,39 @@
                         return;
                     }
 
-                    // Si lo que se escucha durante la pausa es una palabra que salió del propio altavoz de Atlas, descartarla
-                    if (isSpokenTextEcho(currentText)) {
-                        console.log("[Echo] 🔇 Eco de la voz de Atlas descartado durante la pausa:", currentText);
-                        return;
-                    }
+                    if (isSpokenTextEcho(currentText)) return;
 
-                    // Si el usuario hace una nueva pregunta u orden real:
-                    if (finalTranscript.trim()) {
-                        let cmd = finalTranscript.trim();
-                        const matchAfterAtlas = cmd.match(/^.*?\b(?:(?:hola|oye|ok|ey)\s+)?(?:atlas|atla|adlas|atras)\b[\s,.:;?¿!¡-]*(.*)$/i);
-                        if (matchAfterAtlas && matchAfterAtlas[1] !== undefined) {
-                            cmd = matchAfterAtlas[1].trim();
-                        }
-
-                        // Verificación contra eco del altavoz
-                        if (isSpokenTextEcho(cmd)) {
-                            console.log("[Echo] 🔇 Comando descartado por coincidir con palabras del altavoz:", cmd);
-                            return;
-                        }
-
-                        if (isStopPhrase(cmd)) {
+                    let pauseCmd = currentText.replace(/^.*?\b(?:(?:hola|oye|ok|ey)\s+)?(?:atlas|atla|adlas|atras)\b[\s,.:;?¿!¡-]*/i, '').trim();
+                    if (pauseCmd && !isSpokenTextEcho(pauseCmd)) {
+                        const executePauseCmd = () => {
+                            console.log("[Voice] 🔄 Nueva orden mientras estaba pausado:", pauseCmd);
                             clearTimeout(pauseResumeTimeout);
+                            clearTimeout(speechSilenceTimer);
                             isAudioPaused = false;
                             isAwaitingCommand = false;
                             currentAudio.pause();
                             currentAudio.currentTime = 0;
                             currentAudio = null;
-                            updateStateUI('IDLE');
-                            appendMessage('user', `🛑 (Cancelado: "${cmd}")`);
-                            if (ws.readyState === ws.OPEN) {
-                                ws.send(JSON.stringify({ event: 'STOP_SPEAKING' }));
+                            dispatchVoiceCommand(pauseCmd);
+                        };
+
+                        if (finalTranscript.trim()) {
+                            executePauseCmd();
+                            return;
+                        }
+
+                        clearTimeout(speechSilenceTimer);
+                        speechSilenceTimer = setTimeout(() => {
+                            if (isAudioPaused && currentAudio) {
+                                executePauseCmd();
                             }
-                            return;
-                        }
-
-                        if (isResumePhrase(cmd)) {
-                            clearTimeout(pauseResumeTimeout);
-                            isAudioPaused = false;
-                            isAwaitingCommand = false;
-                            updateStateUI('SPEAKING');
-                            appendMessage('user', `▶️ (Reanudar: "${cmd}")`);
-                            currentAudio.play().catch(e => console.warn(e));
-                            return;
-                        }
-
-                        if (cmd && cmd.length > 0) {
-                            console.log("[Voice] 🔄 Nueva orden mientras estaba pausado. Descartando audio anterior:", cmd);
-                            clearTimeout(pauseResumeTimeout);
-                            isAudioPaused = false;
-                            isAwaitingCommand = false;
-                            currentAudio.pause();
-                            currentAudio.currentTime = 0;
-                            currentAudio = null;
-                            sendUserVoiceCommand(cmd);
-                            return;
-                        }
+                        }, 650);
+                        return;
                     }
                     return;
                 }
 
-                // SUPRESIÓN DE ECO: Si el audio acaba de terminar hace menos de 800ms o el micrófono recogió las palabras de Atlas
+                // SUPRESIÓN DE ECO
                 if (Date.now() - audioJustEndedTimestamp < 800) {
                     return;
                 }
@@ -1619,109 +1607,111 @@
 
                 // 3. Si ya estábamos esperando el comando tras haber dicho "Atlas" o por conversación continua
                 if (isAwaitingCommand) {
-                    // Si dice "para" o "cancela" mientras esperaba orden
                     if (isStopPhrase(currentText)) {
                         clearTimeout(commandTimeout);
+                        clearTimeout(speechSilenceTimer);
                         isAwaitingCommand = false;
                         updateStateUI('IDLE');
                         return;
                     }
 
-                    if (isSpokenTextEcho(currentText)) {
-                        console.log("[Audio] 🔇 Eco descartado mientras esperaba comando:", currentText);
+                    if (isSpokenTextEcho(currentText)) return;
+
+                    let cmd = currentText.replace(/^.*?\b(?:(?:hola|oye|ok|ey)\s+)?(?:atlas|atla|adlas|atras)\b[\s,.:;?¿!¡-]*/i, '').trim();
+
+                    // Si el usuario dijo simplemente "Atlas" otra vez
+                    if (!cmd || cmd.length === 0) {
+                        console.log("[WakeWord] 🗣️ Re-confirmación de 'Atlas' detectada en espera.");
+                        playWakeChime();
+                        clearTimeout(commandTimeout);
+                        clearTimeout(speechSilenceTimer);
+                        commandTimeout = setTimeout(() => {
+                            if (isAwaitingCommand) {
+                                isAwaitingCommand = false;
+                                updateStateUI('IDLE');
+                            }
+                        }, 7000);
                         return;
                     }
 
-                    if (finalTranscript.trim()) {
-                        let cmd = finalTranscript.trim();
-                        // Eliminamos cualquier charla previa antes de "atlas" y la propia palabra "atlas"
-                        const matchAfterAtlas = cmd.match(/^.*?\b(?:(?:hola|oye|ok|ey)\s+)?(?:atlas|atla|adlas|atras)\b[\s,.:;?¿!¡-]*(.*)$/i);
-                        if (matchAfterAtlas && matchAfterAtlas[1] !== undefined) {
-                            cmd = matchAfterAtlas[1].trim();
-                            // Si el usuario dijo simplemente "Atlas" mientras ya estábamos esperando, confirmamos con el chime y reiniciamos el temporizador
-                            if (!cmd || cmd.length === 0) {
-                                console.log("[WakeWord] 🗣️ Re-confirmación de 'Atlas' detectada en espera.");
-                                playWakeChime();
-                                clearTimeout(commandTimeout);
-                                commandTimeout = setTimeout(() => {
-                                    if (isAwaitingCommand) {
-                                        isAwaitingCommand = false;
-                                        updateStateUI('IDLE');
-                                    }
-                                }, 7000);
-                                return;
-                            }
-                        }
+                    if (isSpokenTextEcho(cmd)) return;
 
-                        if (isSpokenTextEcho(cmd)) {
-                            console.log("[Audio] 🔇 Comando descartado por ser eco de Atlas:", cmd);
-                            return;
-                        }
-
-                        if (isStopPhrase(cmd)) {
-                            clearTimeout(commandTimeout);
-                            isAwaitingCommand = false;
-                            updateStateUI('IDLE');
-                            return;
-                        }
-
-                        // Si hay una orden hablada (con o sin la palabra "Atlas"), la enviamos directamente
-                        if (cmd && cmd.length > 0) {
-                            clearTimeout(commandTimeout);
-                            isAwaitingCommand = false;
-                            sendUserVoiceCommand(cmd);
-                        }
+                    if (isStopPhrase(cmd)) {
+                        clearTimeout(commandTimeout);
+                        clearTimeout(speechSilenceTimer);
+                        isAwaitingCommand = false;
+                        updateStateUI('IDLE');
+                        return;
                     }
+
+                    // Si ya es finalTranscript, despachar de inmediato
+                    if (finalTranscript.trim()) {
+                        console.log("[Voice] ⚡ Final transcript recibido:", cmd);
+                        dispatchVoiceCommand(cmd);
+                        return;
+                    }
+
+                    // Si es interimTranscript, activar temporizador de pausa/silencio (debounce 650ms)
+                    clearTimeout(speechSilenceTimer);
+                    speechSilenceTimer = setTimeout(() => {
+                        if (isAwaitingCommand) {
+                            console.log("[Debounce] ⏱️ Silencio detectado tras orden hablada:", cmd);
+                            dispatchVoiceCommand(cmd);
+                        }
+                    }, 650);
                     return;
                 }
 
-                // 4. Comprobar si en lo dicho aparece la palabra de activación "Atlas" (descartando cualquier charla previa)
-                if (isSpokenTextEcho(currentText)) {
-                    console.log("[Audio] 🔇 Descartada activación por eco de Atlas:", currentText);
-                    return;
-                }
+                // 4. Reposo: comprobar si aparece la palabra de activación "Atlas"
+                if (isSpokenTextEcho(currentText)) return;
 
                 const wakeMatch = currentText.match(/^.*?\b(?:(?:hola|oye|ok|ey)\s+)?(?:atlas|atla|adlas|atras)\b[\s,.:;?¿!¡-]*(.*)$/i);
                 if (wakeMatch) {
                     const restOfSentence = (wakeMatch[1] || '').trim();
 
-                    // Si inmediatamente después de Atlas dijo una palabra de parada ("Atlas para", "Atlas calla")
                     if (isStopPhrase(restOfSentence)) {
                         console.log("[WakeWord] 🛑 'Atlas para' detectado en reposo.");
                         updateStateUI('IDLE');
                         isAwaitingCommand = false;
+                        clearTimeout(speechSilenceTimer);
                         if (ws.readyState === ws.OPEN) {
                             ws.send(JSON.stringify({ event: 'STOP_SPEAKING' }));
                         }
                         return;
                     }
 
-                    if (isSpokenTextEcho(restOfSentence)) {
-                        console.log("[Echo] 🔇 Resto de frase descartado por eco:", restOfSentence);
-                        return;
-                    }
+                    if (isSpokenTextEcho(restOfSentence)) return;
 
-                    console.log("[WakeWord] 🗣️ ¡Palabra clave 'Atlas' detectada en:", currentText);
+                    console.log("[WakeWord] 🗣️ ¡Palabra clave 'Atlas' detectada!");
                     playWakeChime();
                     updateStateUI('LISTENING');
-                    ws.send(JSON.stringify({ event: 'WAKE_WORD_DETECTED' }));
+                    isAwaitingCommand = true;
+                    if (ws.readyState === ws.OPEN) {
+                        ws.send(JSON.stringify({ event: 'WAKE_WORD_DETECTED' }));
+                    }
 
-                    if (restOfSentence && restOfSentence.length > 0 && finalTranscript.trim()) {
-                        // El usuario dijo "... Atlas <comando>" todo de un tirón
-                        isAwaitingCommand = false;
-                        clearTimeout(commandTimeout);
-                        sendUserVoiceCommand(restOfSentence);
-                    } else {
-                        // El usuario solo dijo "Atlas", abrimos ventana de espera para la orden
-                        isAwaitingCommand = true;
-                        clearTimeout(commandTimeout);
-                        commandTimeout = setTimeout(() => {
-                            if (isAwaitingCommand) {
-                                console.log("[WakeWord] Tiempo de espera agotado sin orden.");
-                                isAwaitingCommand = false;
-                                updateStateUI('IDLE');
-                            }
-                        }, 7000);
+                    clearTimeout(commandTimeout);
+                    commandTimeout = setTimeout(() => {
+                        if (isAwaitingCommand) {
+                            console.log("[WakeWord] Tiempo de espera agotado sin orden.");
+                            isAwaitingCommand = false;
+                            updateStateUI('IDLE');
+                        }
+                    }, 7000);
+
+                    if (restOfSentence && restOfSentence.length > 0) {
+                        if (finalTranscript.trim()) {
+                            console.log("[WakeWord] ⚡ Comando continuo inmediato:", restOfSentence);
+                            dispatchVoiceCommand(restOfSentence);
+                        } else {
+                            clearTimeout(speechSilenceTimer);
+                            speechSilenceTimer = setTimeout(() => {
+                                if (isAwaitingCommand) {
+                                    console.log("[Debounce] ⏱️ Silencio detectado tras 'Atlas <comando>':", restOfSentence);
+                                    dispatchVoiceCommand(restOfSentence);
+                                }
+                            }, 650);
+                        }
                     }
                 }
             };
@@ -1745,13 +1735,13 @@
                 const mobileMic = document.getElementById('mobileMainMicBtn');
                 if (mobileMic) mobileMic.classList.remove('recording');
 
-                // Si la escucha continua de "Atlas" está habilitada, reiniciar automáticamente
-                if (wakeWordListening && !micBlocked) {
+                // Si la escucha continua de "Atlas" está habilitada y no estamos grabando biometría, reiniciar
+                if (wakeWordListening && !micBlocked && !isEnrollRecordingActive) {
                     setTimeout(() => {
                         ensureRecognitionRunning();
                     }, 200);
                 } else {
-                    if (stateText.innerText === 'ESCUCHANDO') {
+                    if (stateText.innerText === 'ESCUCHANDO' && !isEnrollRecordingActive) {
                         updateStateUI('IDLE');
                     }
                 }
@@ -1928,6 +1918,16 @@
             const text = input.value.trim();
             if (!text) return;
             appendMessage('user', text);
+            input.value = '';
+
+            if (isVoiceEnrollmentRequest(text)) {
+                let user = (identityInput && identityInput.value.trim()) || 'Juanes';
+                if (!user || user.toLowerCase() === 'invitado') user = 'Juanes';
+                appendMessage('atlas', `¡Entendido! Abriendo el calibrador biométrico para <b>${user}</b>. Prepárate para hablar.`);
+                triggerVoiceEnrollmentFlow(user);
+                return;
+            }
+
             ws.send(JSON.stringify({ 
                 event: 'TEXT_COMMAND', 
                 text: text,
@@ -1935,7 +1935,6 @@
                 identity: identityInput.value.trim(),
                 isSpoken: false
             }));
-            input.value = '';
         }
 
         function handleEnter(e) {
@@ -2368,11 +2367,9 @@
 
         async function startVoiceEnrollment() {
             const nameInput = document.getElementById('voiceProfileName');
-            const name = (nameInput.value || '').trim();
-            if (!name) {
-                alert('Por favor, introduce tu nombre.');
-                return;
-            }
+            let name = (nameInput.value || '').trim();
+            if (!name || name.toLowerCase() === 'invitado') name = (identityInput && identityInput.value.trim()) || 'Juanes';
+            if (nameInput) nameInput.value = name;
 
             const statusEl = document.getElementById('enrollRecordStatus');
             const enrollBtn = document.getElementById('startEnrollBtn');
@@ -2380,6 +2377,10 @@
 
             enrollBtn.disabled = true;
             testBtn.disabled = true;
+            isEnrollRecordingActive = true;
+            if (recognition) {
+                try { recognition.abort(); } catch (e) {}
+            }
 
             try {
                 statusEl.innerHTML = `🔴 <b>Grabando tu voz (5s)...</b> Di una frase con calma: <br><i>"Hola Atlas, soy ${name} y este es mi perfil de voz."</i>`;
@@ -2421,8 +2422,12 @@
                 statusEl.innerHTML = `⚠️ Error al registrar voz: ${err.message}`;
                 statusEl.style.color = '#ef4444';
             } finally {
+                isEnrollRecordingActive = false;
                 enrollBtn.disabled = false;
                 testBtn.disabled = false;
+                if (wakeWordListening && !micBlocked) {
+                    setTimeout(() => ensureRecognitionRunning(), 400);
+                }
             }
         }
 
@@ -2435,6 +2440,10 @@
             enrollBtn.disabled = true;
             testBtn.disabled = true;
             resultBox.style.display = 'none';
+            isEnrollRecordingActive = true;
+            if (recognition) {
+                try { recognition.abort(); } catch (e) {}
+            }
 
             try {
                 statusEl.innerHTML = '🟣 <b>Habla ahora durante 4 segundos...</b> (Di cualquier frase)';
@@ -2499,13 +2508,20 @@
                 statusEl.innerHTML = `⚠️ Error al probar: ${err.message}`;
                 statusEl.style.color = '#ef4444';
             } finally {
+                isEnrollRecordingActive = false;
                 enrollBtn.disabled = false;
                 testBtn.disabled = false;
+                if (wakeWordListening && !micBlocked) {
+                    setTimeout(() => ensureRecognitionRunning(), 400);
+                }
             }
         }
 
         // Flujo guiado automáticamente por voz para calibrar y registrar la huella
         async function triggerVoiceEnrollmentFlow(username = 'Juanes') {
+            if (!username || username.toLowerCase() === 'invitado') {
+                username = (identityInput && identityInput.value.trim()) || 'Juanes';
+            }
             openVoiceProfilesModal();
             const nameInput = document.getElementById('voiceProfileName');
             if (nameInput) nameInput.value = username;

@@ -126,7 +126,16 @@ export const askAtlas = async (userPrompt, history = [], username = 'invitado') 
 
             if (pendingTools.length === 0) {
                 console.log('[Atlas AI] 🛑 Respuesta final generada.');
-                return { text: msg.content, toolCall: executedTools.length > 0 ? executedTools : null };
+                let finalText = (msg.content || '').trim();
+                if (!finalText && executedTools.length > 0) {
+                    const isVoiceEnroll = executedTools.some(t => t.action === 'register_voice_profile');
+                    if (isVoiceEnroll) {
+                        finalText = "Iniciando el calibrador biométrico de voz en pantalla. Di una frase clara cuando termine la cuenta atrás.";
+                    } else {
+                        finalText = "Operación realizada con éxito.";
+                    }
+                }
+                return { text: finalText, toolCall: executedTools.length > 0 ? executedTools : null };
             }
 
             for (const tool of pendingTools) {
