@@ -649,9 +649,41 @@
                 max-width: none;
             }
         }
+
+        /* BANNER FLOTANTE DE AVISO DE MICRÓFONO / HTTPS */
+        .mic-prompt-banner {
+            position: fixed;
+            top: 15px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(15, 23, 42, 0.95);
+            backdrop-filter: blur(25px);
+            -webkit-backdrop-filter: blur(25px);
+            border: 1px solid rgba(0, 229, 255, 0.5);
+            box-shadow: 0 10px 40px rgba(0,0,0,0.85);
+            border-radius: 16px;
+            padding: 10px 18px;
+            z-index: 500;
+            color: #fff;
+            font-size: 13px;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            max-width: 92vw;
+            box-sizing: border-box;
+            animation: fadeInDown 0.35s ease;
+        }
+        @keyframes fadeInDown {
+            from { opacity: 0; transform: translate(-50%, -15px); }
+            to { opacity: 1; transform: translate(-50%, 0); }
+        }
     </style>
 </head>
 <body>
+    <!-- Banner de Permisos de Micrófono y Conexión Segura -->
+    <div id="micPromptBanner" class="mic-prompt-banner">
+        <div id="micPromptContent" style="display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap;"></div>
+    </div>
     <!-- Modal Skills -->
     <div class="modal-overlay" id="skillsModal">
         <div class="modal-content">
@@ -1048,23 +1080,53 @@
             `);
         }
 
+        function checkMicEnvironment() {
+            const banner = document.getElementById('micPromptBanner');
+            const content = document.getElementById('micPromptContent');
+            if (!banner || !content) return;
+
+            // 1. Si no es contexto seguro (HTTP en móvil)
+            if (!window.isSecureContext) {
+                banner.style.display = 'flex';
+                banner.style.borderColor = 'rgba(239, 68, 68, 0.7)';
+                content.innerHTML = `
+                    <span>🔒 <b>Micrófono bloqueado:</b> En el móvil debes entrar por <b>HTTPS</b> para que el navegador te pida permiso.</span>
+                    <button onclick="window.location.href='https://' + window.location.hostname + ':8443'" class="glass-btn" style="padding: 6px 14px; font-size: 12px; background: rgba(0,229,255,0.25); border-color: #00e5ff; color: #00e5ff;">
+                        Entrar por HTTPS (Puerto 8443) ➔
+                    </button>
+                `;
+                return;
+            }
+
+            // 2. Si es HTTPS, comprobar el estado de permisos
+            if (navigator.permissions && navigator.permissions.query) {
+                navigator.permissions.query({ name: 'microphone' }).then(status => {
+                    if (status.state === 'prompt') {
+                        banner.style.display = 'flex';
+                        banner.style.borderColor = 'rgba(0, 229, 255, 0.6)';
+                        content.innerHTML = `
+                            <span>🎙️ <b>Toca el núcleo de Atlas</b> para activar el micrófono y el comando de voz "Atlas".</span>
+                        `;
+                    } else if (status.state === 'denied') {
+                        banner.style.display = 'flex';
+                        banner.style.borderColor = 'rgba(239, 68, 68, 0.7)';
+                        content.innerHTML = `
+                            <span>🔒 Micrófono bloqueado en este sitio. Toca el candado 🔒 en la barra de direcciones y selecciona "Permitir".</span>
+                        `;
+                    } else if (status.state === 'granted') {
+                        banner.style.display = 'none';
+                    }
+
+                    status.onchange = () => checkMicEnvironment();
+                }).catch(() => {});
+            }
+        }
+
         async function ensureMicPermission() {
             // 1. Detección de contexto seguro (HTTPS o localhost)
             if (!window.isSecureContext) {
-                appendMessage('atlas', `
-                    <div style="background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.35); border-radius: 12px; padding: 14px 16px; margin: 6px 0;">
-                        <b style="color: #fcd34d; display: flex; align-items: center; gap: 8px; font-size: 14px;">
-                            ⚠️ Contexto no seguro (HTTP en red local)
-                        </b>
-                        <p style="margin: 6px 0; font-size: 12.5px; color: #cbd5e1; line-height: 1.5;">
-                            Por seguridad estándar, los navegadores bloquean el micrófono fuera de <code>localhost</code> si la conexión no es HTTPS.
-                        </p>
-                        <p style="margin: 4px 0; font-size: 12px; color: #94a3b8; line-height: 1.6;">
-                            • Si estás en el mismo ordenador: entra por <a href="http://localhost:8080" style="color:#00e5ff; font-weight: bold;">http://localhost:8080</a><br>
-                            • Si estás desde una tablet o móvil por WiFi: entra con conexión segura a <a href="https://${window.location.hostname}:8443" style="color:#00e5ff; font-weight: bold;">https://${window.location.hostname}:8443</a> (acepta el aviso de certificado la primera vez).
-                        </p>
-                    </div>
-                `);
+                checkMicEnvironment();
+                showMicPermissionHelp();
                 return false;
             }
 
@@ -1074,6 +1136,7 @@
                     const status = await navigator.permissions.query({ name: 'microphone' });
                     if (status.state === 'denied') {
                         showMicPermissionHelp();
+                        checkMicEnvironment();
                         return false;
                     }
                 } catch (e) {}
@@ -1084,9 +1147,12 @@
                 try {
                     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
                     stream.getTracks().forEach(track => track.stop());
+                    const banner = document.getElementById('micPromptBanner');
+                    if (banner) banner.style.display = 'none';
                     return true;
                 } catch (err) {
                     console.warn("[Mic] Error al solicitar getUserMedia:", err);
+                    checkMicEnvironment();
                     if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
                         showMicPermissionHelp();
                         return false;
@@ -1379,6 +1445,7 @@
 
         // Iniciar escucha continua de palabra clave si ya hay permisos concedidos
         window.addEventListener('DOMContentLoaded', async () => {
+            checkMicEnvironment();
             if (navigator.permissions && navigator.permissions.query) {
                 try {
                     const status = await navigator.permissions.query({ name: 'microphone' });
