@@ -18,7 +18,8 @@ const MOCK_AI = process.env.MOCK_AI === 'true';
 
 const app = express();
 app.use(express.static(path.join(__dirname, '../public')));
-app.use(express.json()); // Permitir JSON body
+app.use(express.json({ limit: '50mb' })); // Permitir payloads grandes para audio Base64
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // === API GESTOR DE SKILLS ===
 import { loadSkills } from './ai/tools.js';

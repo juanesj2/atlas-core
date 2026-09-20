@@ -2399,7 +2399,13 @@
                     body: JSON.stringify({ name, audioBase64: base64Audio })
                 });
 
-                const result = await res.json();
+                let result;
+                try {
+                    result = await res.json();
+                } catch (e) {
+                    throw new Error(`Respuesta inválida del servidor (HTTP ${res.status})`);
+                }
+
                 if (res.ok && result.success) {
                     statusEl.innerHTML = `✅ <b>¡Huella de voz registrada con éxito para ${name}!</b>`;
                     statusEl.style.color = '#4ade80';
@@ -2412,7 +2418,7 @@
                 }
             } catch (err) {
                 console.error(err);
-                statusEl.innerHTML = `⚠️ Error con el micrófono: ${err.message}`;
+                statusEl.innerHTML = `⚠️ Error al registrar voz: ${err.message}`;
                 statusEl.style.color = '#ef4444';
             } finally {
                 enrollBtn.disabled = false;
@@ -2448,7 +2454,12 @@
                     body: JSON.stringify({ audioBase64: base64Audio })
                 });
 
-                const result = await res.json();
+                let result;
+                try {
+                    result = await res.json();
+                } catch (e) {
+                    throw new Error(`Respuesta inválida del servidor (HTTP ${res.status})`);
+                }
                 resultBox.style.display = 'block';
 
                 if (res.ok && result.success) {
