@@ -871,7 +871,7 @@
             if (event.data instanceof ArrayBuffer) {
                 if (currentAudio) currentAudio.pause(); // Detener el anterior si lo hubiera
                 
-                const audioBlob = new Blob([event.data], { type: 'audio/wav' });
+                const audioBlob = new Blob([event.data], { type: 'audio/mpeg' });
                 const audioUrl = URL.createObjectURL(audioBlob);
                 currentAudio = new Audio(audioUrl);
                 
