@@ -1080,7 +1080,7 @@
                 <button class="glass-btn" onclick="openVoiceProfilesModal()" style="width:100%; justify-content:center; gap:8px; border-color: rgba(0, 229, 255, 0.4); color: #00e5ff;">
                     🎙️ Huella de Voz (Biometría)
                 </button>
-                <input type="text" id="identityInput" class="glass-input" placeholder="Nombre (ej: Juanes)" value="" title="Identidad detectada">
+                <input type="text" id="identityInput" class="glass-input" placeholder="Nombre (ej: Juanes)" value="Juanes" title="Identidad detectada">
                 <select id="voiceSelect" class="glass-input" title="Seleccionar Voz">
                     <option value="male">👨 Voz Álvaro</option>
                     <option value="female">👩 Voz Elvira</option>
@@ -1126,8 +1126,97 @@
 
     <script>
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const ws = new WebSocket(`${protocol}//${window.location.host}`);
-        ws.binaryType = 'arraybuffer';
+        let ws = null;
+        let wsReconnectTimer = null;
+        let wsMessageQueue = [];
+        let thinkingTimeoutTimer = null;
+
+        function connectWebSocket() {
+            if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
+                return;
+            }
+            clearTimeout(wsReconnectTimer);
+            try {
+                ws = new WebSocket(`${protocol}//${window.location.host}`);
+                ws.binaryType = 'arraybuffer';
+
+                ws.onopen = () => {
+                    console.log('✅ Conectado al Gateway de Atlas');
+                    while (wsMessageQueue.length > 0) {
+                        const queued = wsMessageQueue.shift();
+                        try {
+                            const dataStr = (typeof queued === 'object') ? JSON.stringify(queued) : queued;
+                            ws.send(dataStr);
+                        } catch (err) {
+                            console.error("[WS Queue] Error enviando mensaje en cola:", err);
+                        }
+                    }
+                };
+
+                ws.onmessage = handleWsMessage;
+
+                ws.onclose = (event) => {
+                    console.warn(`[WS] Desconectado de Atlas (código: ${event.code}). Reconectando en 1.5s...`);
+                    clearThinkingTimeout();
+                    if (stateText && (stateText.innerText === 'PENSANDO' || (screen && screen.classList.contains('state-thinking')))) {
+                        updateStateUI('IDLE');
+                    }
+                    scheduleWsReconnect();
+                };
+
+                ws.onerror = (err) => {
+                    console.error('[WS] Error en conexión WebSocket:', err);
+                    try { ws.close(); } catch(e) {}
+                };
+            } catch (err) {
+                console.error('[WS] Fallo al inicializar WebSocket:', err);
+                scheduleWsReconnect();
+            }
+        }
+
+        function scheduleWsReconnect() {
+            clearTimeout(wsReconnectTimer);
+            wsReconnectTimer = setTimeout(() => {
+                connectWebSocket();
+            }, 1500);
+        }
+
+        function safeSendWs(payload) {
+            const dataStr = (typeof payload === 'object') ? JSON.stringify(payload) : payload;
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                try {
+                    ws.send(dataStr);
+                    return true;
+                } catch (e) {
+                    console.error("[WS] Error en send():", e);
+                }
+            }
+            console.log("[WS] Socket no abierto. Guardando en cola y reconectando...");
+            wsMessageQueue.push(payload);
+            connectWebSocket();
+            return false;
+        }
+
+        function startThinkingTimeout() {
+            clearThinkingTimeout();
+            thinkingTimeoutTimer = setTimeout(() => {
+                if (stateText && (stateText.innerText === 'PENSANDO' || (screen && screen.classList.contains('state-thinking')))) {
+                    console.warn("[Timeout] Atlas tardó en responder. Reanudando estado.");
+                    updateStateUI('IDLE');
+                    appendMessage('atlas', '⚠️ No se recibió respuesta a tiempo del servidor. Comprueba la conexión.');
+                }
+            }, 15000);
+        }
+
+        function clearThinkingTimeout() {
+            if (thinkingTimeoutTimer) {
+                clearTimeout(thinkingTimeoutTimer);
+                thinkingTimeoutTimer = null;
+            }
+        }
+
+        // Conectar inmediatamente el socket
+        connectWebSocket();
 
         const screen = document.getElementById('screen');
         const stateText = document.getElementById('stateText');
@@ -1338,14 +1427,16 @@
                 return;
             }
 
+            const currentIdentity = (identityInput && identityInput.value.trim()) || localStorage.getItem('atlas_user_identity') || 'Juanes';
             updateStateUI('THINKING');
-            ws.send(JSON.stringify({ 
+            startThinkingTimeout();
+            safeSendWs({ 
                 event: 'TEXT_COMMAND', 
                 text: text.trim(),
                 voice: voiceSelect.value,
-                identity: identityInput.value.trim(),
+                identity: currentIdentity,
                 isSpoken: true
-            }));
+            });
         }
 
         function hasWakeWord(text) {
@@ -1457,9 +1548,8 @@
                         updateStateUI('IDLE');
                         isAwaitingCommand = false;
                         clearTimeout(speechSilenceTimer);
-                        if (ws.readyState === ws.OPEN) {
-                            ws.send(JSON.stringify({ event: 'STOP_SPEAKING' }));
-                        }
+                        clearThinkingTimeout();
+                        safeSendWs({ event: 'STOP_SPEAKING' });
                         if (recognition) {
                             try { recognition.abort(); } catch (e) {}
                         }
@@ -1483,9 +1573,8 @@
                         audioJustEndedTimestamp = Date.now();
                         updateStateUI('IDLE');
                         appendMessage('user', `🛑 (Detenido: "${currentText}")`);
-                        if (ws.readyState === ws.OPEN) {
-                            ws.send(JSON.stringify({ event: 'STOP_SPEAKING' }));
-                        }
+                        clearThinkingTimeout();
+                        safeSendWs({ event: 'STOP_SPEAKING' });
                         if (recognition) {
                             try { recognition.abort(); } catch (e) {}
                         }
@@ -1542,9 +1631,8 @@
                         currentAudio = null;
                         updateStateUI('IDLE');
                         appendMessage('user', `🛑 (Cancelado: "${currentText}")`);
-                        if (ws.readyState === ws.OPEN) {
-                            ws.send(JSON.stringify({ event: 'STOP_SPEAKING' }));
-                        }
+                        clearThinkingTimeout();
+                        safeSendWs({ event: 'STOP_SPEAKING' });
                         if (recognition) {
                             try { recognition.abort(); } catch (e) {}
                         }
@@ -1674,9 +1762,8 @@
                         updateStateUI('IDLE');
                         isAwaitingCommand = false;
                         clearTimeout(speechSilenceTimer);
-                        if (ws.readyState === ws.OPEN) {
-                            ws.send(JSON.stringify({ event: 'STOP_SPEAKING' }));
-                        }
+                        clearThinkingTimeout();
+                        safeSendWs({ event: 'STOP_SPEAKING' });
                         return;
                     }
 
@@ -1686,9 +1773,7 @@
                     playWakeChime();
                     updateStateUI('LISTENING');
                     isAwaitingCommand = true;
-                    if (ws.readyState === ws.OPEN) {
-                        ws.send(JSON.stringify({ event: 'WAKE_WORD_DETECTED' }));
-                    }
+                    safeSendWs({ event: 'WAKE_WORD_DETECTED' });
 
                     clearTimeout(commandTimeout);
                     commandTimeout = setTimeout(() => {
@@ -1750,9 +1835,8 @@
             console.warn("SpeechRecognition no está soportado en este navegador.");
         }
 
-        ws.onopen = () => console.log('Conectado al Gateway de Atlas');
-
-        ws.onmessage = async (event) => {
+        async function handleWsMessage(event) {
+            clearThinkingTimeout();
             // Manejo de AUDIO (Binario) desde el TTS de Atlas
             if (event.data instanceof ArrayBuffer) {
                 if (!event.data || event.data.byteLength < 50) return;
@@ -1889,7 +1973,7 @@
             playWakeChime();
             isAwaitingCommand = true;
             updateStateUI('LISTENING');
-            ws.send(JSON.stringify({ event: 'WAKE_WORD_DETECTED' }));
+            safeSendWs({ event: 'WAKE_WORD_DETECTED' });
             
             clearTimeout(commandTimeout);
             commandTimeout = setTimeout(() => {
@@ -1900,8 +1984,16 @@
             }, 7000);
         }
 
-        // Iniciar escucha continua de palabra clave si ya hay permisos concedidos
+        // Iniciar escucha continua de palabra clave si ya hay permisos concedidos y sincronizar identidad
         window.addEventListener('DOMContentLoaded', async () => {
+            const savedIdentity = localStorage.getItem('atlas_user_identity') || 'Juanes';
+            if (identityInput) {
+                identityInput.value = savedIdentity;
+                identityInput.addEventListener('input', () => {
+                    const val = identityInput.value.trim();
+                    if (val) localStorage.setItem('atlas_user_identity', val);
+                });
+            }
             checkMicEnvironment();
             if (navigator.permissions && navigator.permissions.query) {
                 try {
@@ -1921,20 +2013,24 @@
             input.value = '';
 
             if (isVoiceEnrollmentRequest(text)) {
-                let user = (identityInput && identityInput.value.trim()) || 'Juanes';
+                let user = (identityInput && identityInput.value.trim()) || localStorage.getItem('atlas_user_identity') || 'Juanes';
                 if (!user || user.toLowerCase() === 'invitado') user = 'Juanes';
                 appendMessage('atlas', `¡Entendido! Abriendo el calibrador biométrico para <b>${user}</b>. Prepárate para hablar.`);
                 triggerVoiceEnrollmentFlow(user);
                 return;
             }
 
-            ws.send(JSON.stringify({ 
+            const currentIdentity = (identityInput && identityInput.value.trim()) || localStorage.getItem('atlas_user_identity') || 'Juanes';
+            updateStateUI('THINKING');
+            startThinkingTimeout();
+
+            safeSendWs({ 
                 event: 'TEXT_COMMAND', 
                 text: text,
                 voice: voiceSelect.value,
-                identity: identityInput.value.trim(),
+                identity: currentIdentity,
                 isSpoken: false
-            }));
+            });
         }
 
         function handleEnter(e) {
@@ -2248,6 +2344,16 @@
                     `;
                     listDiv.appendChild(card);
                 });
+
+                if (profiles.length > 0) {
+                    const saved = localStorage.getItem('atlas_user_identity');
+                    if (!saved || saved.toLowerCase() === 'invitado') {
+                        localStorage.setItem('atlas_user_identity', profiles[0].name);
+                    }
+                    if (identityInput && (!identityInput.value.trim() || identityInput.value.toLowerCase() === 'invitado')) {
+                        identityInput.value = profiles[0].name;
+                    }
+                }
             } catch (e) {
                 listDiv.innerHTML = '<p style="color:#ef4444; text-align:center;">Error al cargar perfiles.</p>';
             }
@@ -2423,6 +2529,7 @@
                     loadVoiceProfilesList();
                     const idInput = document.getElementById('identityInput');
                     if (idInput) idInput.value = name;
+                    localStorage.setItem('atlas_user_identity', name);
                 } else {
                     statusEl.innerHTML = `❌ Error: ${result.error || 'No se pudo guardar'}`;
                     statusEl.style.color = '#ef4444';
@@ -2498,7 +2605,10 @@
                         statusEl.innerHTML = '✅ Reconocimiento completado.';
                         statusEl.style.color = '#4ade80';
                         const idInput = document.getElementById('identityInput');
-                        if (idInput) idInput.value = result.user;
+                        if (idInput) {
+                            idInput.value = result.user;
+                            localStorage.setItem('atlas_user_identity', result.user);
+                        }
                     } else {
                         resultBox.innerHTML = `
                             <div style="color:#f59e0b; font-weight:700; font-size:13px; margin-bottom:4px;">
