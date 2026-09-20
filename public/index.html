@@ -1192,10 +1192,16 @@
         function ensureRecognitionRunning() {
             if (!recognition || micBlocked || !wakeWordListening) return;
             try {
-                if (!isRecording) {
-                    recognition.start();
+                recognition.start();
+            } catch (err) {
+                if (err.name !== 'InvalidStateError') {
+                    setTimeout(() => {
+                        if (wakeWordListening && !micBlocked) {
+                            try { recognition.start(); } catch (e) {}
+                        }
+                    }, 350);
                 }
-            } catch (err) {}
+            }
         }
 
         if (SpeechRecognition) {
@@ -1280,16 +1286,26 @@
                         const matchAfterAtlas = cmd.match(/^.*?\b(?:(?:hola|oye|ok|ey)\s+)?(?:atlas|atla|adlas|atras)\b[\s,.:;?¿!¡-]*(.*)$/i);
                         if (matchAfterAtlas && matchAfterAtlas[1] !== undefined) {
                             cmd = matchAfterAtlas[1].trim();
+                            // Si el usuario dijo simplemente "Atlas" mientras ya estábamos esperando, confirmamos con el chime y reiniciamos el temporizador
+                            if (!cmd || cmd.length === 0) {
+                                console.log("[WakeWord] 🗣️ Re-confirmación de 'Atlas' detectada en espera.");
+                                playWakeChime();
+                                clearTimeout(commandTimeout);
+                                commandTimeout = setTimeout(() => {
+                                    if (isAwaitingCommand) {
+                                        isAwaitingCommand = false;
+                                        updateStateUI('IDLE');
+                                    }
+                                }, 7000);
+                                return;
+                            }
                         }
-                        // Solo enviamos si realmente hay una orden hablada tras la palabra clave
+                        // Si hay una orden hablada (con o sin la palabra "Atlas"), la enviamos directamente
                         if (cmd && cmd.length > 0) {
                             clearTimeout(commandTimeout);
                             isAwaitingCommand = false;
                             sendUserVoiceCommand(cmd);
                         }
-                        // NOTA CRÍTICA: Si cmd está vacío, significa que el reconocedor acaba de finalizar
-                        // la pronunciación de la palabra "Atlas". NO volvemos a IDLE; mantenemos isAwaitingCommand = true
-                        // a la espera de que el usuario pronuncie la orden.
                     }
                     return;
                 }
@@ -1346,7 +1362,7 @@
                 if (wakeWordListening && !micBlocked) {
                     setTimeout(() => {
                         ensureRecognitionRunning();
-                    }, 150);
+                    }, 200);
                 } else {
                     if (stateText.innerText === 'ESCUCHANDO') {
                         updateStateUI('IDLE');
@@ -1374,9 +1390,13 @@
                 // Asegurar que el micrófono sigue activo escuchando "Atlas para"
                 ensureRecognitionRunning();
                 
-                currentAudio.onended = () => {
+                const onAudioDone = () => {
                     audioJustEndedTimestamp = Date.now();
                     currentAudio = null;
+                    
+                    // Reactivar el micrófono inmediatamente tras terminar el audio
+                    setTimeout(() => ensureRecognitionRunning(), 200);
+
                     if (expectResponse) {
                         expectResponse = false;
                         isAwaitingCommand = true;
@@ -1393,8 +1413,17 @@
                         updateStateUI('IDLE');
                     }
                 };
+
+                currentAudio.onended = onAudioDone;
+                currentAudio.onerror = (err) => {
+                    console.warn("[Audio] Error en reproducción:", err);
+                    onAudioDone();
+                };
                 
-                currentAudio.play().catch(e => console.warn("[Audio] Error al reproducir:", e));
+                currentAudio.play().catch(e => {
+                    console.warn("[Audio] Error al reproducir:", e);
+                    onAudioDone();
+                });
                 return;
             }
 

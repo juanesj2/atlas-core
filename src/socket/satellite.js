@@ -194,19 +194,21 @@ async function sendVoiceResponse(ws, text, voicePreference = 'male') {
                 ws.send(audioBuffer, { binary: true });
                 console.log(`[Satellite] 🔊 Audio y texto sincronizados enviados (${audioBuffer.length} bytes)`);
                 
-                // Solo activamos OPEN_MIC si Atlas formuló una pregunta expresa al usuario (contiene signo de interrogación)
-                const asksQuestion = /[\?¿]/i.test(text);
+                // MODO CONVERSACIÓN CONTINUA: Mantenemos el micro abierto (OPEN_MIC) para que el usuario
+                // pueda continuar hablando de forma natural sin tener que repetir "Atlas" en cada frase,
+                // a menos que Atlas se haya despedido formalmente.
                 const isFarewell = /adiós|hasta luego|nos vemos|que descanses|hasta pronto/i.test(text);
                 
-                if (asksQuestion && !isFarewell) {
-                    console.log("[Satellite] ❓ Atlas hizo una pregunta. Solicitando respuesta de seguimiento (OPEN_MIC).");
-                    ws.send(JSON.stringify({ event: 'OPEN_MIC' }));
-                } else {
+                if (isFarewell) {
+                    console.log("[Satellite] Despedida detectada. Cerrando micro.");
                     setTimeout(() => {
                         if (ws.readyState === ws.OPEN) {
                             sendSatelliteState(ws, 'IDLE', 'sleeping');
                         }
-                    }, 500);
+                    }, 1000);
+                } else {
+                    console.log("[Satellite] 🔄 Conversación continua habilitada (OPEN_MIC).");
+                    ws.send(JSON.stringify({ event: 'OPEN_MIC' }));
                 }
             }
         });
