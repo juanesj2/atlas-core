@@ -2207,6 +2207,13 @@
                 modal.style.display = 'none';
                 modal.classList.remove('open');
             }
+            if (stateText.innerText === 'HABLANDO' || screen.classList.contains('state-speaking')) {
+                updateStateUI('IDLE');
+            }
+            isAwaitingCommand = false;
+            if (wakeWordListening && !micBlocked && !isEnrollRecordingActive) {
+                setTimeout(() => ensureRecognitionRunning(), 300);
+            }
         }
 
         async function loadVoiceProfilesList() {
@@ -2365,7 +2372,7 @@
             });
         }
 
-        async function startVoiceEnrollment() {
+        async function startVoiceEnrollment(autoRestartRecognition = true) {
             const nameInput = document.getElementById('voiceProfileName');
             let name = (nameInput.value || '').trim();
             if (!name || name.toLowerCase() === 'invitado') name = (identityInput && identityInput.value.trim()) || 'Juanes';
@@ -2381,6 +2388,8 @@
             if (recognition) {
                 try { recognition.abort(); } catch (e) {}
             }
+
+            let enrollmentSuccess = false;
 
             try {
                 statusEl.innerHTML = `🔴 <b>Grabando tu voz (5s)...</b> Di una frase con calma: <br><i>"Hola Atlas, soy ${name} y este es mi perfil de voz."</i>`;
@@ -2408,6 +2417,7 @@
                 }
 
                 if (res.ok && result.success) {
+                    enrollmentSuccess = true;
                     statusEl.innerHTML = `✅ <b>¡Huella de voz registrada con éxito para ${name}!</b>`;
                     statusEl.style.color = '#4ade80';
                     loadVoiceProfilesList();
@@ -2418,17 +2428,19 @@
                     statusEl.style.color = '#ef4444';
                 }
             } catch (err) {
-                console.error(err);
+                console.error("[Biometrics] Error al registrar voz:", err);
                 statusEl.innerHTML = `⚠️ Error al registrar voz: ${err.message}`;
                 statusEl.style.color = '#ef4444';
             } finally {
                 isEnrollRecordingActive = false;
                 enrollBtn.disabled = false;
                 testBtn.disabled = false;
-                if (wakeWordListening && !micBlocked) {
-                    setTimeout(() => ensureRecognitionRunning(), 400);
+                if (autoRestartRecognition && wakeWordListening && !micBlocked) {
+                    setTimeout(() => ensureRecognitionRunning(), 500);
                 }
             }
+
+            return enrollmentSuccess;
         }
 
         async function testVoiceIdentification() {
@@ -2541,19 +2553,53 @@
                 await new Promise(r => setTimeout(r, 1000));
             }
 
-            enrollBtn.disabled = false;
-            testBtn.disabled = false;
+            // 2. Iniciar la grabación de 5 segundos sin reiniciar el micro inmediatamente
+            const success = await startVoiceEnrollment(false);
 
-            // 2. Iniciar la grabación de 5 segundos
-            await startVoiceEnrollment();
+            // 3. Finalización garantizada y desbloqueo de la interfaz
+            const finishEnrollmentFlow = () => {
+                if (success) {
+                    appendMessage('atlas', `✅ ¡Huella de voz registrada con éxito para <b>${username}</b>! Ya te reconozco al hablar.`);
+                } else {
+                    appendMessage('atlas', `⚠️ No se pudo completar el registro de huella. Puedes intentarlo de nuevo desde Ajustes.`);
+                }
+                updateStateUI('IDLE');
+                isAwaitingCommand = false;
+                
+                // Cerrar modal automáticamente tras 1.2s
+                setTimeout(() => {
+                    closeVoiceProfilesModal();
+                }, 1200);
 
-            // 3. Confirmación auditiva adicional
-            if ('speechSynthesis' in window) {
+                // Reactivar escucha de "Atlas" de forma limpia
+                setTimeout(() => {
+                    if (wakeWordListening && !micBlocked) {
+                        ensureRecognitionRunning();
+                    }
+                }, 1600);
+            };
+
+            // 4. Confirmación auditiva por voz
+            if ('speechSynthesis' in window && success) {
                 try {
+                    window.speechSynthesis.cancel();
                     const utt = new SpeechSynthesisUtterance(`Tu huella de voz ha sido registrada con éxito, ${username}.`);
                     utt.lang = 'es-ES';
+                    let finished = false;
+                    const onDone = () => {
+                        if (finished) return;
+                        finished = true;
+                        finishEnrollmentFlow();
+                    };
+                    utt.onend = onDone;
+                    utt.onerror = onDone;
+                    setTimeout(onDone, 4000); // Fallback de seguridad
                     window.speechSynthesis.speak(utt);
-                } catch(e) {}
+                } catch (e) {
+                    finishEnrollmentFlow();
+                }
+            } else {
+                finishEnrollmentFlow();
             }
         }
     </script>
