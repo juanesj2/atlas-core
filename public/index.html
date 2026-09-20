@@ -1397,7 +1397,10 @@
                     audioJustEndedTimestamp = Date.now();
                     currentAudio = null;
                     
-                    // Reactivar el micrófono inmediatamente tras terminar el audio
+                    // Purgar y reiniciar limpiamente el búfer del micrófono para que nunca se cuele lo que dijo el altavoz
+                    if (recognition) {
+                        try { recognition.abort(); } catch (e) {}
+                    }
                     setTimeout(() => ensureRecognitionRunning(), 200);
 
                     if (expectResponse) {
