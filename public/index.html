@@ -1061,6 +1061,8 @@
         // --- SPEECH RECOGNITION (STT Nativo del navegador) ---
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         let recognition = null;
+        let lastAtlasSpokenText = '';
+        let audioJustEndedTimestamp = 0;
 
         function showMicPermissionHelp() {
             appendMessage('atlas', `
@@ -1236,6 +1238,7 @@
                             currentAudio.currentTime = 0;
                             currentAudio = null;
                         }
+                        audioJustEndedTimestamp = Date.now();
                         updateStateUI('IDLE');
                         appendMessage('user', `🛑 (Interrumpido: "${currentText}")`);
                         if (ws.readyState === ws.OPEN) {
@@ -1245,6 +1248,19 @@
                     }
                     if (currentAudio) {
                         return; // Si no es una orden de parada, no procesamos otros comandos mientras habla
+                    }
+                }
+
+                // SUPRESIÓN DE ECO: Si el audio acaba de terminar hace menos de 800ms o el micrófono recogió las palabras de Atlas
+                if (Date.now() - audioJustEndedTimestamp < 800) {
+                    return;
+                }
+                if (lastAtlasSpokenText) {
+                    const cleanAtlas = lastAtlasSpokenText.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9\s]/g, " ").trim();
+                    const cleanUser = currentText.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9\s]/g, " ").trim();
+                    if (cleanUser.length > 5 && (cleanAtlas.includes(cleanUser) || cleanUser.includes(cleanAtlas.slice(0, 30)))) {
+                        console.log("[Audio] 🔇 Eco de la voz de Atlas suprimido:", currentText);
+                        return;
                     }
                 }
 
@@ -1261,7 +1277,12 @@
                     if (finalTranscript.trim()) {
                         clearTimeout(commandTimeout);
                         isAwaitingCommand = false;
-                        const cmd = finalTranscript.replace(/^(?:(?:hola|oye|ok|ey)\s+)?(?:atlas|atla|adlas)[\s,.:;]*/i, '').trim();
+                        let cmd = finalTranscript.trim();
+                        // Eliminamos cualquier charla previa antes de "atlas" y la propia palabra "atlas"
+                        const matchAfterAtlas = cmd.match(/^.*?\b(?:atlas|atla|adlas)\b[\s,.:;]*(.*)$/i);
+                        if (matchAfterAtlas && matchAfterAtlas[1] !== undefined) {
+                            cmd = matchAfterAtlas[1].trim();
+                        }
                         if (cmd) {
                             sendUserVoiceCommand(cmd);
                         } else {
@@ -1271,17 +1292,17 @@
                     return;
                 }
 
-                // 3. Comprobar si en lo dicho aparece la palabra de activación "Atlas"
-                const wakeMatch = currentText.match(/(?:(?:hola|oye|ok|ey)\s+)?(?:atlas|atla|adlas)([\s,.:;]+.*|$)/i);
+                // 3. Comprobar si en lo dicho aparece la palabra de activación "Atlas" (descartando cualquier charla previa)
+                const wakeMatch = currentText.match(/^.*?\b(?:(?:hola|oye|ok|ey)\s+)?(?:atlas|atla|adlas)\b[\s,.:;]*(.*)$/i);
                 if (wakeMatch) {
                     console.log("[WakeWord] 🗣️ ¡Palabra clave 'Atlas' detectada en:", currentText);
                     playWakeChime();
                     updateStateUI('LISTENING');
                     ws.send(JSON.stringify({ event: 'WAKE_WORD_DETECTED' }));
 
-                    const restOfSentence = (wakeMatch[1] || '').replace(/^[\s,.:;]+/, '').trim();
+                    const restOfSentence = (wakeMatch[1] || '').trim();
                     if (restOfSentence && finalTranscript.trim()) {
-                        // El usuario dijo "Atlas <comando>" todo junto de un tirón
+                        // El usuario dijo "... Atlas <comando>" todo de un tirón
                         isAwaitingCommand = false;
                         sendUserVoiceCommand(restOfSentence);
                     } else {
@@ -1351,6 +1372,7 @@
                 ensureRecognitionRunning();
                 
                 currentAudio.onended = () => {
+                    audioJustEndedTimestamp = Date.now();
                     currentAudio = null;
                     if (expectResponse) {
                         expectResponse = false;
@@ -1385,6 +1407,7 @@
             }
 
             if (data.type === 'text_response') {
+                lastAtlasSpokenText = data.text || '';
                 appendMessage('atlas', data.text);
             }
         };

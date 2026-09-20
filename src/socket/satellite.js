@@ -134,8 +134,7 @@ export const handleSatelliteConnection = (ws, req) => {
 
                 const response = await askAtlas(data.text, conversationHistory, username);
                 
-                // Guardamos el historial del asistente
-                conversationHistory.push({ role: 'assistant', content: response.text });
+                // Limitar tamaño del historial para no saturar el contexto
                 if (conversationHistory.length > 20) conversationHistory.splice(0, 2);
 
                 if (data.isSpoken !== false) {
@@ -195,15 +194,19 @@ async function sendVoiceResponse(ws, text, voicePreference = 'male') {
                 ws.send(audioBuffer, { binary: true });
                 console.log(`[Satellite] 🔊 Audio y texto sincronizados enviados (${audioBuffer.length} bytes)`);
                 
-                // Si Atlas se está despidiendo, cerramos la ventana de conversación.
+                // Solo activamos OPEN_MIC si Atlas formuló una pregunta expresa al usuario (contiene signo de interrogación)
+                const asksQuestion = /[\?¿]/i.test(text);
                 const isFarewell = /adiós|hasta luego|nos vemos|que descanses|hasta pronto/i.test(text);
                 
-                if (isFarewell) {
-                    console.log("[Satellite] Despedida detectada. Cerrando micro.");
-                    setTimeout(() => sendSatelliteState(ws, 'IDLE', 'sleeping'), 2000);
-                } else {
-                    // MODO CONVERSACION CONTINUA: Se envia la senal para que el cliente abra el micro AL TERMINAR el audio
+                if (asksQuestion && !isFarewell) {
+                    console.log("[Satellite] ❓ Atlas hizo una pregunta. Solicitando respuesta de seguimiento (OPEN_MIC).");
                     ws.send(JSON.stringify({ event: 'OPEN_MIC' }));
+                } else {
+                    setTimeout(() => {
+                        if (ws.readyState === ws.OPEN) {
+                            sendSatelliteState(ws, 'IDLE', 'sleeping');
+                        }
+                    }, 500);
                 }
             }
         });
