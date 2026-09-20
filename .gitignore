@@ -1,0 +1,6 @@
+node_modules/
+.env
+spotify_tokens.json
+askpass.bat
+*.log
+ssl/*.pem

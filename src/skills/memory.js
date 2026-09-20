@@ -17,7 +17,8 @@ export const definition = {
 };
 
 export const execute = async (args) => {
-    return saveFact(args.username, args.fact) 
+    const success = await saveFact(args.username, args.fact);
+    return success 
         ? `He guardado exitosamente el dato para ${args.username}.` 
         : `No pude guardar el dato (quizás el usuario es inválido o el dato ya existía).`;
 };

@@ -3,44 +3,416 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ATLAS - Satélite Virtual</title>
+    <title>Atlas Web Simulator</title>
+    <script src="https://unpkg.com/@lottiefiles/lottie-player@latest/dist/lottie-player.js"></script>
     <style>
-        body { background-color: #1a1a1a; color: white; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; }
-        .screen-container { width: 300px; height: 300px; border-radius: 50%; background-color: #000; border: 8px solid #333; display: flex; flex-direction: column; align-items: center; justify-content: center; box-shadow: 0 0 30px rgba(0,0,0,0.8); position: relative; overflow: hidden; transition: all 0.5s ease; flex-shrink: 0; }
-        .state-text { font-size: 24px; font-weight: bold; z-index: 10; }
-        .animation-overlay { position: absolute; top: 0; left: 0; right: 0; bottom: 0; border-radius: 50%; opacity: 0.5; transition: all 0.5s ease; }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
         
-        .anim-sleeping { background: transparent; }
-        .anim-mic_active { background: radial-gradient(circle, #00ff00 0%, transparent 70%); }
-        .anim-pulsing_blue { background: radial-gradient(circle, #0088ff 0%, transparent 70%); animation: pulse 1s infinite alternate; }
-        .anim-waveform { background: radial-gradient(circle, #ff0055 0%, transparent 70%); animation: pulse 0.3s infinite alternate; }
-        @keyframes pulse { 0% { transform: scale(0.8); opacity: 0.3; } 100% { transform: scale(1.1); opacity: 0.8; } }
-
-        .chat-container { margin-top: 20px; width: 80%; max-width: 600px; height: 250px; background: #2a2a2a; border-radius: 12px; padding: 15px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; box-shadow: inset 0 0 10px rgba(0,0,0,0.5); }
-        .msg { padding: 10px 15px; border-radius: 15px; max-width: 75%; font-size: 15px; line-height: 1.4; word-wrap: break-word; }
-        .msg.user { background: #0088ff; color: white; align-self: flex-end; border-bottom-right-radius: 2px; }
-        .msg.atlas { background: #444; color: #eee; align-self: flex-start; border-bottom-left-radius: 2px; }
-
-        .controls { margin-top: 20px; display: flex; gap: 10px; width: 80%; max-width: 600px; align-items: center; }
-        input[type="text"] { flex-grow: 1; padding: 12px; border-radius: 8px; border: none; font-size: 16px; background: #333; color: white; }
-        input[type="text"]:focus { outline: 2px solid #0088ff; }
-        select { padding: 12px; border-radius: 8px; background: #444; color: white; border: none; font-weight: bold; cursor: pointer; }
-        button { padding: 12px 20px; background-color: #0088ff; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; transition: 0.2s; }
-        button:hover { background-color: #0066cc; }
-        .btn-mic { background-color: #ff0055; border-radius: 50%; width: 50px; height: 50px; font-size: 20px; display: flex; justify-content: center; align-items: center; flex-shrink: 0; }
-        .btn-mic.recording { animation: pulse 0.5s infinite alternate; background-color: #ff0000; box-shadow: 0 0 15px red; }
+        * { box-sizing: border-box; font-family: 'Inter', sans-serif; }
         
-        /* Modal Skills */
-        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 1000; justify-content: center; align-items: center; }
-        .modal-content { background: #222; width: 90%; max-width: 500px; padding: 20px; border-radius: 12px; border: 1px solid #444; color: white; display: flex; flex-direction: column; max-height: 80vh; }
-        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid #444; padding-bottom: 10px; }
-        .modal-header h2 { margin: 0; }
-        .close-btn { background: transparent; color: #aaa; font-size: 24px; border: none; cursor: pointer; padding: 0; width: 30px; height: 30px; }
-        .close-btn:hover { color: white; background: transparent; }
-        .skills-list { overflow-y: auto; flex-grow: 1; display: flex; flex-direction: column; gap: 10px; padding-right: 10px; }
-        .skill-card { background: #333; border-radius: 8px; padding: 15px; display: flex; justify-content: space-between; align-items: center; border-left: 4px solid #555; }
-        .toggle-btn { padding: 8px 15px; border-radius: 20px; font-weight: bold; font-size: 12px; background: #555; color: white; }
-        .toggle-btn.active { background: #00ff00; color: #000; box-shadow: 0 0 10px rgba(0,255,0,0.3); }
+        body { 
+            background: radial-gradient(circle at 10% 10%, #1e1b4b 0%, #020617 100%);
+            color: #f8fafc; display: flex; align-items: center; justify-content: center; 
+            height: 100vh; margin: 0; overflow: hidden;
+        }
+
+        /* --- DASHBOARD LAYOUT --- */
+        .app-container {
+            display: flex; gap: 30px; width: 95vw; max-width: 1300px; height: 85vh; align-items: stretch;
+        }
+
+        .panel-left {
+            width: 320px; background: rgba(15, 23, 42, 0.4); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 24px; padding: 30px 20px;
+            display: flex; flex-direction: column; align-items: center; justify-content: space-between;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.3); flex-shrink: 0;
+            overflow-y: auto; overflow-x: hidden; scrollbar-width: none;
+        }
+        .panel-left::-webkit-scrollbar { display: none; }
+
+        .panel-right {
+            flex: 1; display: flex; flex-direction: column; gap: 20px; min-width: 0;
+        }
+
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&family=Share+Tech+Mono&display=swap');
+
+        /* --- ATLAS EYE (SCREEN) --- */
+        .screen-container {
+            width: clamp(200px, 40vh, 320px);
+            height: clamp(200px, 40vh, 320px);
+            background: #000;
+            border-radius: 50%;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 0 50px rgba(0, 200, 255, 0.15), inset 0 0 20px rgba(0, 150, 255, 0.2);
+            border: 4px solid #111;
+            font-family: 'Share Tech Mono', monospace;
+            flex-shrink: 0;
+            transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .center-abs {
+            position: absolute; top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+        }
+
+        .title-hud {
+            position: absolute; top: 12%; width: 100%; text-align: center;
+            font-family: 'Orbitron', sans-serif; font-size: clamp(15px, 2.8vh, 24px); font-weight: 700;
+            letter-spacing: 2px; text-shadow: 0 0 12px rgba(255, 255, 255, 0.9); z-index: 10; color: #fff;
+        }
+
+        .subtitle-hud {
+            position: absolute; top: 21%; width: 100%; text-align: center;
+            font-size: 9px; color: #00e5ff; letter-spacing: 2.5px; z-index: 10;
+        }
+
+        .status-hud {
+            position: absolute; bottom: 14%; width: 100%; text-align: center;
+            font-size: 8.5px; color: #00e5ff; letter-spacing: 1px; z-index: 10;
+            opacity: 0.9;
+        }
+
+        .core {
+            width: 32%; height: 32%; border-radius: 50%;
+            background: transparent;
+            animation: pulse-hud 2.5s infinite alternate ease-in-out; z-index: 5;
+            transition: all 0.3s ease;
+            display: flex; align-items: center; justify-content: center;
+        }
+
+        .core-glow {
+            width: 100%; height: 100%; border-radius: 50%;
+            background: radial-gradient(circle, rgba(255,255,255,0.9) 0%, rgba(0,255,255,0.7) 30%, rgba(0,120,255,0.4) 65%, transparent 80%);
+            box-shadow: 0 0 35px #00ffff, 0 0 70px rgba(0, 150, 255, 0.7), inset 0 0 20px rgba(255,255,255,0.8);
+            transition: all 0.5s ease;
+        }
+
+        .core-svg {
+            width: 100%; height: 100%;
+            pointer-events: none;
+            overflow: visible;
+            color: #00ffff;
+            transition: color 0.5s ease;
+        }
+
+        .neural-lattice {
+            transform-origin: 100px 100px;
+            animation: rotateSvgRight 24s linear infinite;
+        }
+
+        .plasma-lattice {
+            transform-origin: 100px 100px;
+            animation: rotateSvgLeft 14s linear infinite;
+        }
+
+        .core-singularity {
+            width: 14%; height: 14%; border-radius: 50%;
+            background: #ffffff;
+            box-shadow: 0 0 15px #ffffff, 0 0 30px #00ffff;
+            animation: singularity-pulse 1.2s infinite alternate ease-in-out;
+            z-index: 6;
+            pointer-events: none;
+        }
+
+        @keyframes singularity-pulse {
+            0% { transform: translate(-50%, -50%) scale(0.85); opacity: 0.9; }
+            100% { transform: translate(-50%, -50%) scale(1.25); opacity: 1; }
+        }
+
+        .ring {
+            border-radius: 50%; position: absolute; border-style: solid; pointer-events: none;
+            transition: border-color 0.5s ease;
+        }
+
+        .ring-outer {
+            width: 78%; height: 78%; border-width: 2px; border-color: #00aaff; border-style: dashed;
+            opacity: 0.6; animation: rotateLeft 40s linear infinite;
+        }
+
+        .ring-mid {
+            width: 59%; height: 59%; border-width: 3px;
+            border-color: rgba(0, 255, 255, 0.8) transparent rgba(0, 255, 255, 0.8) transparent;
+            animation: rotateRight 8s linear infinite;
+        }
+
+        .ring-inner {
+            width: 40%; height: 40%; border-width: 1px; border-color: #00ffff; border-style: dashed;
+            box-shadow: 0 0 15px rgba(0, 255, 255, 0.3) inset; animation: rotateLeft 12s linear infinite;
+            transition: all 0.5s ease;
+        }
+
+        .svg-layer {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none;
+        }
+        .svg-layer circle, .svg-layer path, .svg-layer text { transition: all 0.5s ease; }
+
+        @keyframes rotateRight { 0% { transform: translate(-50%, -50%) rotate(0deg); } 100% { transform: translate(-50%, -50%) rotate(360deg); } }
+        @keyframes rotateLeft { 0% { transform: translate(-50%, -50%) rotate(0deg); } 100% { transform: translate(-50%, -50%) rotate(-360deg); } }
+        @keyframes rotateSvgRight { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        @keyframes rotateSvgLeft { 0% { transform: rotate(0deg); } 100% { transform: rotate(-360deg); } }
+        @keyframes pulse-hud { 0% { transform: translate(-50%, -50%) scale(0.96); opacity: 0.85; } 100% { transform: translate(-50%, -50%) scale(1.04); opacity: 1; } }
+        @keyframes speak-pulse { 0% { transform: translate(-50%, -50%) scale(0.94); opacity: 0.85; } 100% { transform: translate(-50%, -50%) scale(1.08); opacity: 1; } }
+
+        /* =========================================
+           ESTADOS INTERACTIVOS (Sobrescriben colores)
+           ========================================= */
+        
+        .hud-lower-arc {
+            opacity: 0;
+            transition: stroke 0.4s ease, opacity 0.4s ease;
+        }
+        .hud-chevron {
+            transition: stroke 0.4s ease, opacity 0.4s ease;
+        }
+
+        /* LISTENING: Verde esmeralda y plasma cuántico reactivo */
+        .state-listening .ring-outer { border-color: #00ff88; animation-duration: 25s; }
+        .state-listening .ring-mid { border-color: rgba(0, 255, 136, 0.8) transparent rgba(0, 255, 136, 0.8) transparent; animation-duration: 6s; }
+        .state-listening .ring-inner { border-color: #00ff88; box-shadow: 0 0 25px rgba(0, 255, 136, 0.8) inset; animation-duration: 8s; }
+        .state-listening .core-glow { 
+            background: radial-gradient(circle, rgba(255,255,255,0.95) 0%, rgba(0,255,136,0.7) 30%, rgba(0,180,80,0.4) 65%, transparent 80%);
+            box-shadow: 0 0 40px #00ff88, 0 0 80px rgba(0, 200, 100, 0.8), inset 0 0 20px #fff;
+        }
+        .state-listening .core-svg { color: #00ff88; }
+        .state-listening .core-singularity { box-shadow: 0 0 15px #fff, 0 0 30px #00ff88; }
+        .state-listening .neural-lattice { animation-duration: 16s; }
+        .state-listening .plasma-lattice { animation-duration: 8s; }
+        .state-listening .svg-layer circle, .state-listening .svg-layer path { stroke: #00ff88; }
+        .state-listening .hud-lower-arc { opacity: 0.95; stroke: #00ff88; }
+        .state-listening .hud-chevron { stroke: #00ff88; opacity: 1; }
+        .state-listening .status-hud, .state-listening .subtitle-hud { color: #00ff88; }
+
+        /* THINKING: Violeta / Magenta neón hiper-procesamiento */
+        .state-thinking .ring-outer { border-color: #b200ff; animation-duration: 12s; }
+        .state-thinking .ring-mid { border-color: rgba(178, 0, 255, 0.8) transparent rgba(178, 0, 255, 0.8) transparent; animation-duration: 3.5s; }
+        .state-thinking .ring-inner { border-color: #ff00ea; box-shadow: 0 0 25px rgba(255, 0, 234, 0.8) inset; animation-duration: 4s; }
+        .state-thinking .core-glow { 
+            background: radial-gradient(circle, rgba(255,255,255,0.95) 0%, rgba(255,0,234,0.7) 30%, rgba(178,0,255,0.4) 65%, transparent 80%);
+            box-shadow: 0 0 50px #ff00ea, 0 0 80px rgba(178, 0, 255, 0.8), inset 0 0 20px #fff;
+        }
+        .state-thinking .core-svg { color: #ff00ea; }
+        .state-thinking .core-singularity { box-shadow: 0 0 15px #fff, 0 0 35px #ff00ea; }
+        .state-thinking .neural-lattice { animation-duration: 8s; }
+        .state-thinking .plasma-lattice { animation-duration: 4s; }
+        .state-thinking .svg-layer circle { stroke: #b200ff; }
+        .state-thinking .svg-layer path { stroke: #ff00ea; }
+        .state-thinking .hud-lower-arc { opacity: 0.95; stroke: #ff00ea; }
+        .state-thinking .hud-chevron { stroke: #ff00ea; opacity: 1; }
+        .state-thinking .status-hud, .state-thinking .subtitle-hud { color: #ff00ea; }
+
+        /* SPEAKING: Blanco puro / Cian luminoso voz fluida */
+        .state-speaking .ring-outer { border-color: #ffffff; animation-duration: 35s; }
+        .state-speaking .ring-mid { border-color: rgba(255, 255, 255, 0.8) transparent rgba(255, 255, 255, 0.8) transparent; animation-duration: 8s; }
+        .state-speaking .ring-inner { border-color: #00e5ff; box-shadow: 0 0 25px rgba(0, 229, 255, 0.8) inset; animation-duration: 10s; }
+        .state-speaking .core-glow { 
+            background: radial-gradient(circle, #ffffff 0%, rgba(0,255,255,0.85) 30%, rgba(0,180,255,0.5) 65%, transparent 80%);
+            box-shadow: 0 0 45px #ffffff, 0 0 90px rgba(0, 229, 255, 0.9), inset 0 0 25px #fff;
+            animation: speak-pulse 1.2s infinite alternate ease-in-out;
+        }
+        .state-speaking .core-svg { color: #ffffff; }
+        .state-speaking .core-singularity { box-shadow: 0 0 20px #fff, 0 0 40px #00ffff; }
+        .state-speaking .neural-lattice { animation-duration: 18s; }
+        .state-speaking .plasma-lattice { animation-duration: 10s; }
+        .state-speaking .svg-layer circle { stroke: #ffffff; }
+        .state-speaking .svg-layer path { stroke: #00e5ff; }
+        .state-speaking .hud-lower-arc { opacity: 1; stroke: #00ffff; }
+        .state-speaking .hud-chevron { stroke: #00ffff; opacity: 1; }
+        .state-speaking .status-hud, .state-speaking .subtitle-hud { color: #ffffff; }
+
+
+        /* --- SETTINGS GROUP --- */
+        .settings-group { width: 100%; display: flex; flex-direction: column; gap: 12px; }
+        .settings-label { color: #94a3b8; font-size: 11px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; margin-bottom: -5px; padding-left: 5px; }
+
+        /* --- CHAT BOX --- */
+        .chat-container { 
+            flex: 1; background: rgba(15, 23, 42, 0.4); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 24px; 
+            padding: 25px; overflow-y: auto; display: flex; flex-direction: column; gap: 15px; 
+            box-shadow: 0 4px 30px rgba(0,0,0,0.3); 
+        }
+        .chat-container::-webkit-scrollbar { width: 6px; }
+        .chat-container::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
+        
+        .msg { padding: 14px 20px; border-radius: 18px; max-width: 80%; font-size: 16px; line-height: 1.5; font-weight: 400; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .msg.user { background: linear-gradient(135deg, #0284c7, #2563eb); color: white; align-self: flex-end; border-bottom-right-radius: 4px; }
+        .msg.atlas { background: rgba(255, 255, 255, 0.1); color: #e2e8f0; align-self: flex-start; border-bottom-left-radius: 4px; border: 1px solid rgba(255,255,255,0.05); }
+
+        /* --- INPUT GROUP --- */
+        .input-group { 
+            display: flex; gap: 15px; align-items: center; background: rgba(15, 23, 42, 0.4); 
+            backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.08); 
+            border-radius: 24px; padding: 15px 20px; box-shadow: 0 4px 30px rgba(0,0,0,0.3);
+            flex-wrap: nowrap;
+        }
+        
+        .glass-input, .glass-btn {
+            background: rgba(15, 23, 42, 0.5); backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 12px; 
+            padding: 12px 16px; color: white; font-size: 15px; outline: none; transition: all 0.2s;
+        }
+        .glass-input:focus { border-color: #38bdf8; box-shadow: 0 0 15px rgba(56, 189, 248, 0.2); background: rgba(15, 23, 42, 0.8); }
+        
+        input[type="text"].glass-input { flex-grow: 1; min-width: 0; }
+        select.glass-input { font-weight: 600; cursor: pointer; appearance: none; }
+        
+        button.glass-btn { background: rgba(56, 189, 248, 0.1); font-weight: 600; cursor: pointer; color: #38bdf8; border-color: rgba(56, 189, 248, 0.3); flex-shrink: 0; }
+        button.glass-btn:hover { background: rgba(56, 189, 248, 0.2); transform: translateY(-1px); }
+        
+        .btn-mic { background: linear-gradient(135deg, #f43f5e, #be123c); border: none; border-radius: 50%; width: 55px; height: 55px; font-size: 22px; display: flex; justify-content: center; align-items: center; flex-shrink: 0; cursor: pointer; box-shadow: 0 4px 15px rgba(244, 63, 94, 0.4); transition: transform 0.2s; }
+        .btn-mic:hover { transform: scale(1.05); }
+        .btn-mic.recording { animation: pulseMic 0.5s infinite alternate; background: #ef4444; box-shadow: 0 0 25px #ef4444; }
+        @keyframes pulseMic { 0% { transform: scale(0.95); } 100% { transform: scale(1.1); } }
+        
+        /* --- MODAL SKILLS --- */
+        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); backdrop-filter: blur(8px); z-index: 1000; justify-content: center; align-items: center; }
+        .modal-content { background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.1); width: 90%; max-width: 500px; padding: 25px; border-radius: 20px; color: white; display: flex; flex-direction: column; max-height: 85vh; box-shadow: 0 20px 50px rgba(0,0,0,0.5); }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 15px; }
+        .modal-header h2 { margin: 0; font-weight: 800; font-size: 20px; display: flex; align-items: center; gap: 10px; }
+        .close-btn { background: transparent; color: rgba(255,255,255,0.5); font-size: 28px; border: none; cursor: pointer; padding: 0; width: 30px; height: 30px; line-height: 1; border-radius: 50%; transition: 0.2s; }
+        .close-btn:hover { color: white; background: rgba(255,255,255,0.1); }
+        .skills-list { overflow-y: auto; flex-grow: 1; display: flex; flex-direction: column; gap: 12px; padding-right: 5px; }
+        .skills-list::-webkit-scrollbar { width: 4px; }
+        .skills-list::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 10px; }
+        
+        .skill-card { background: rgba(255,255,255,0.03); border-radius: 12px; padding: 16px; display: flex; justify-content: space-between; align-items: center; border: 1px solid rgba(255,255,255,0.05); transition: 0.2s; }
+        .skill-card:hover { background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.1); }
+        .skill-title { font-weight: 800; font-size: 14px; letter-spacing: 1px; }
+        .skill-file { font-size: 12px; color: #94a3b8; margin-top: 4px; font-family: monospace; }
+        
+        .toggle-btn { padding: 8px 18px; border-radius: 20px; font-weight: 800; font-size: 12px; background: rgba(255,255,255,0.1); color: #94a3b8; border: none; cursor: pointer; transition: all 0.3s; }
+        .toggle-btn.active { background: rgba(34, 197, 94, 0.2); color: #4ade80; box-shadow: 0 0 15px rgba(34, 197, 94, 0.3); border: 1px solid rgba(34, 197, 94, 0.4); }
+
+        /* --- RESPONSIVE MOBILE --- */
+        @media (max-width: 767px) {
+            body {
+                padding: 0;
+                margin: 0;
+                height: 100vh;
+                height: 100dvh;
+                overflow: hidden;
+                align-items: stretch;
+            }
+            .app-container {
+                flex-direction: column;
+                width: 100vw;
+                height: 100%;
+                min-height: 100%;
+                gap: 0;
+                border-radius: 0;
+                max-width: none;
+                border: none;
+            }
+            .panel-left {
+                width: 100%;
+                border-radius: 0;
+                border: none;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                padding: 20px 10px;
+                box-sizing: border-box;
+                height: auto;
+                min-height: 0;
+                position: relative;
+                z-index: 100;
+                background: rgba(15, 23, 42, 0.4);
+                overflow: visible !important;
+                flex-shrink: 0;
+            }
+            #mobileSettingsBtn {
+                position: absolute !important;
+                top: 15px !important;
+                right: 15px !important;
+                display: block !important;
+                margin: 0;
+            }
+            .screen-container {
+                width: 130px;
+                height: 130px;
+                margin: 0;
+                border-width: 3px;
+                box-shadow: 0 10px 30px rgba(0,0,0,0.8), inset 0 0 30px rgba(0,0,0,0.9);
+            }
+            .state-text {
+                font-size: 14px;
+            }
+            .settings-group {
+                position: absolute;
+                top: 70px;
+                right: 15px;
+                left: 15px;
+                width: auto;
+                height: max-content;
+                background: rgba(15, 23, 42, 0.85);
+                backdrop-filter: blur(25px);
+                -webkit-backdrop-filter: blur(25px);
+                padding: 20px;
+                padding-bottom: 25px !important;
+                box-sizing: border-box;
+                border-radius: 24px;
+                border: 1px solid rgba(255, 255, 255, 0.15);
+                box-shadow: 0 30px 60px rgba(0,0,0,0.8), inset 0 1px 0 rgba(255,255,255,0.1);
+                z-index: 150;
+                flex-direction: column;
+                
+                /* ANIMATION */
+                opacity: 0;
+                transform: translateY(-20px) scale(0.95);
+                pointer-events: none;
+                transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+                transform-origin: top right;
+            }
+            .settings-group.show {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+                pointer-events: auto;
+            }
+            .panel-right {
+                flex: 1;
+                border-radius: 0;
+                padding: 0;
+                height: auto;
+                gap: 0;
+            }
+            .chat-container {
+                flex: 1;
+                border-radius: 0;
+                border: none;
+                padding: 15px;
+                border-top: 1px solid rgba(255,255,255,0.05);
+            }
+            .input-group {
+                border-radius: 0;
+                border: none;
+                border-top: 1px solid rgba(255,255,255,0.05);
+                flex-wrap: nowrap;
+                padding: 10px 15px;
+                padding-bottom: max(10px, env(safe-area-inset-bottom));
+                gap: 10px;
+                background: rgba(15, 23, 42, 0.6);
+            }
+            .btn-mic {
+                width: 45px;
+                height: 45px;
+                min-width: 45px;
+            }
+            #commandInput {
+                flex: 1;
+                min-width: 0;
+                font-size: 16px;
+            }
+            .input-group .glass-btn {
+                padding: 0 15px !important;
+                height: 45px;
+                white-space: nowrap;
+            }
+            .modal-content {
+                width: 95% !important;
+                max-width: none;
+            }
+        }
     </style>
 </head>
 <body>
@@ -60,25 +432,265 @@
         </div>
     </div>
 
-    <div class="screen-container" id="screen">
-        <div class="animation-overlay" id="animationLayer"></div>
-        <div class="state-text" id="stateText">IDLE</div>
+    <!-- Modal Rutinas -->
+    <div class="modal-overlay" id="routinesModal">
+        <div class="modal-content" style="width: 500px;">
+            <div class="modal-header">
+                <h2>⏰ Gestor de Rutinas</h2>
+                <button class="close-btn" onclick="closeRoutinesManager()">&times;</button>
+            </div>
+            
+            <!-- Crear Rutina Manualmente -->
+            <div style="background: rgba(255,255,255,0.05); padding: 15px; border-radius: 12px; margin-bottom: 15px;">
+                <h3 style="font-size: 14px; margin-top: 0; margin-bottom: 10px; color: #4ade80;">+ Nueva Rutina</h3>
+                <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+                    <input type="text" id="newRoutineName" class="glass-input" placeholder="Nombre (ej: Despertar)" style="flex: 2; padding: 8px;">
+                    <input type="time" id="newRoutineTime" class="glass-input" style="flex: 1; padding: 8px;" title="Hora">
+                </div>
+                <textarea id="newRoutinePrompt" class="glass-input" placeholder="Órdenes (ej: Enciende la luz, dime el tiempo que hará hoy y da los buenos días de forma alegre)" style="width: 100%; padding: 8px; margin-bottom: 10px; resize: vertical;" rows="3"></textarea>
+                <button id="saveRoutineBtn" class="glass-btn" onclick="createManualRoutine()" style="width: 100%; justify-content: center; background: rgba(34, 197, 94, 0.2); color: #4ade80;">Guardar Rutina</button>
+            </div>
+
+            <div class="skills-list" id="routinesList">
+                <!-- Se rellena por JS -->
+            </div>
+            <div style="margin-top:20px; text-align:center; font-size:12px; color:#888;">
+                También puedes pedirle a Atlas por voz que las cree.
+            </div>
+        </div>
     </div>
 
-    <div class="chat-container" id="chatBox">
-        <div class="msg atlas">Hola, soy Atlas. ¿En qué puedo ayudarte?</div>
-    </div>
+    <!-- MAIN DASHBOARD -->
+    <div class="app-container">
+        
+        <!-- SIDEBAR IZQUIERDO -->
+        <div class="panel-left" style="position: relative;">
+            <button id="mobileSettingsBtn" class="glass-btn" onclick="toggleMobileSettings()" style="display: none; position: absolute; top: 15px; right: 15px; padding: 10px 15px; font-size: 18px;" title="Ajustes">⚙️</button>
+            
+            <div class="screen-container" id="screen">
+                <svg class="svg-layer" viewBox="0 0 320 320" preserveAspectRatio="xMidYMid meet">
+                    <defs>
+                        <!-- Filtro de resplandor para los diales cian -->
+                        <filter id="hudGlow" x="-20%" y="-20%" width="140%" height="140%">
+                            <feGaussianBlur stdDeviation="1.5" result="blur" />
+                            <feMerge>
+                                <feMergeNode in="blur" />
+                                <feMergeNode in="SourceGraphic" />
+                            </feMerge>
+                        </filter>
 
-    <div class="controls">
-        <button onclick="openSkillsManager()" title="Gestionar Extensiones" style="padding: 10px; background: #444;">⚙️</button>
-        <input type="text" id="identityInput" placeholder="Desconocido" value="" title="Identidad detectada" style="width: 100px; border-radius: 20px; border: none; padding: 10px; background: #333; color: white;">
-        <select id="voiceSelect" title="Seleccionar Voz">
-            <option value="male">👨 Voz Masculina (Álvaro)</option>
-            <option value="female">👩 Voz Femenina (Elvira)</option>
-        </select>
-        <button class="btn-mic" id="micButton" onclick="toggleMic()">🎤</button>
-        <input type="text" id="commandInput" placeholder="Escribe o pulsa el micro..." onkeypress="handleEnter(event)">
-        <button onclick="sendCommandText()">Enviar</button>
+                        <!-- Guías invisibles de trayectoria para textPath (al estar en defs nunca se dibujan como trazos ni se superponen) -->
+                        <!-- Curva inferior para SISTEMA ATLAS IA: R=105, centrada perfectamente en la pista entre R=94.2 y R=116 -->
+                        <path id="bottomTextPath" d="M 55 160 A 105 105 0 0 0 265 160" />
+                        <!-- Curva inferior para ESTADO: REPOSO: R=83, centrada perfectamente en la pista entre R=72 y R=94.2 -->
+                        <path id="statusTextPath" d="M 77 160 A 83 83 0 0 0 243 160" />
+                    </defs>
+
+                    <!-- 1. DIAL EXTERIOR: Regla graduada milimétrica completa -->
+                    <circle cx="160" cy="160" r="152" fill="none" stroke="#00ffff" stroke-width="6" stroke-dasharray="1 5" opacity="0.75" />
+                    <circle cx="160" cy="160" r="147" fill="none" stroke="#0077aa" stroke-width="1.5" opacity="0.5" />
+                    <circle cx="160" cy="160" r="142" fill="none" stroke="#00e5ff" stroke-width="2" stroke-dasharray="3 30" opacity="0.9" />
+
+                    <!-- 2. NÚMEROS DE TELEMETRÍA ANGULAR EXTERIOR (R=144, pegados al dial exterior) -->
+                    <g fill="#00e5ff" font-size="5.5" font-family="'Share Tech Mono', monospace" text-anchor="middle" opacity="0.8">
+                        <text x="160" y="21">0</text>
+                        <text x="197" y="26">15</text>
+                        <text x="231" y="39">30</text>
+                        <text x="261" y="60">45</text>
+                        <text x="284" y="88">60</text>
+                        <text x="298" y="122">75</text>
+                        <text x="303" y="162">90</text>
+                        <text x="298" y="202">105</text>
+                        <text x="284" y="236">120</text>
+                        <text x="261" y="264">135</text>
+                        <text x="231" y="285">150</text>
+                        <text x="197" y="298">165</text>
+                        <text x="160" y="303">180</text>
+                        <text x="123" y="298">195</text>
+                        <text x="89" y="285">210</text>
+                        <text x="59" y="264">225</text>
+                        <text x="36" y="236">240</text>
+                        <text x="22" y="202">255</text>
+                        <text x="17" y="162">270</text>
+                        <text x="22" y="122">285</text>
+                        <text x="36" y="88">300</text>
+                        <text x="59" y="60">315</text>
+                        <text x="89" y="39">330</text>
+                        <text x="123" y="26">345</text>
+                    </g>
+
+                    <!-- 3. DIAL INTERMEDIO: Aros y líneas de mira telescópica (Retículas 0°, 90°, 180°, 270°) -->
+                    <circle cx="160" cy="160" r="130" fill="none" stroke="#00e5ff" stroke-width="1.2" opacity="0.4" />
+                    <line x1="24" y1="160" x2="44" y2="160" stroke="#00ffff" stroke-width="1.5" opacity="0.8" />
+                    <line x1="276" y1="160" x2="296" y2="160" stroke="#00ffff" stroke-width="1.5" opacity="0.8" />
+                    <line x1="160" y1="24" x2="160" y2="44" stroke="#00ffff" stroke-width="1.5" opacity="0.8" />
+                    <line x1="160" y1="276" x2="160" y2="296" stroke="#00ffff" stroke-width="1.5" opacity="0.8" />
+
+                    <!-- 4. TEXTO CURVADO INFERIOR (Banda exterior R=105, centrada entre R=94.2 y R=116) -->
+                    <text font-size="7.5" fill="#00e5ff" font-family="'Share Tech Mono', monospace" letter-spacing="2.2" filter="url(#hudGlow)" opacity="0.95">
+                        <textPath href="#bottomTextPath" startOffset="50%" text-anchor="middle">
+                            SISTEMA ATLAS IA v2.1 // EN ESPERA // LISTO
+                        </textPath>
+                    </text>
+
+                    <!-- 5. ECUALIZADOR RADIAL ELEVADO (Despejado por encima de las flechitas < >) -->
+                    <g stroke="#00ffff" stroke-linecap="round" opacity="0.85" filter="url(#hudGlow)">
+                        <!-- Barras radiales izquierdas (elevadas entre 100° y 150°, terminando a y=140 bien por encima de las flechas en y=162) -->
+                        <line x1="116" y1="94" x2="106" y2="82" stroke-width="1.8"/>
+                        <line x1="108" y1="101" x2="96" y2="90" stroke-width="2.2"/>
+                        <line x1="100" y1="109" x2="88" y2="99" stroke-width="2.4"/>
+                        <line x1="93" y1="118" x2="80" y2="109" stroke-width="2.4"/>
+                        <line x1="88" y1="128" x2="74" y2="120" stroke-width="2.2"/>
+                        <line x1="84" y1="139" x2="70" y2="133" stroke-width="2"/>
+
+                        <!-- Barras radiales derechas (elevadas entre 80° y 30°, terminando a y=140 bien por encima de las flechas en y=162) -->
+                        <line x1="204" y1="94" x2="214" y2="82" stroke-width="1.8"/>
+                        <line x1="212" y1="101" x2="224" y2="90" stroke-width="2.2"/>
+                        <line x1="220" y1="109" x2="232" y2="99" stroke-width="2.4"/>
+                        <line x1="227" y1="118" x2="240" y2="109" stroke-width="2.4"/>
+                        <line x1="232" y1="128" x2="246" y2="120" stroke-width="2.2"/>
+                        <line x1="236" y1="139" x2="250" y2="133" stroke-width="2"/>
+                    </g>
+
+                    <!-- 6. LÍNEAS TELEMÉTRICAS INFERIORES CUADRADAS Y ACTIVAS -->
+                    <!-- Arco exterior (R=116): Enlace continuo sin holguras con las retículas horizontales (44,160) y (276,160) y la vertical inferior (160,276) -->
+                    <path class="hud-lower-arc arc-outer" d="M 44 160 A 116 116 0 0 0 276 160" fill="none" stroke="#00e5ff" stroke-width="1.3" opacity="0" filter="url(#hudGlow)" />
+
+                    <!-- Arco interior (R=94.2): Enlace concéntrico continuo que nace y muere en las puntas inferiores de los chevrons laterales -->
+                    <path class="hud-lower-arc arc-inner" d="M 66 166 A 94.2 94.2 0 0 0 254 166" fill="none" stroke="#00e5ff" stroke-width="1.3" opacity="0" filter="url(#hudGlow)" />
+
+                    <!-- 7. MARCADORES DE FLECHITA / CHEVRONS LATERALES (Centrados simétricamente en el eje horizontal y=160) -->
+                    <path class="hud-chevron" d="M 66 154 L 60 160 L 66 166" fill="none" stroke="#00ffff" stroke-width="1.5" stroke-linejoin="round" opacity="0.8" filter="url(#hudGlow)"/>
+                    <path class="hud-chevron" d="M 254 154 L 260 160 L 254 166" fill="none" stroke="#00ffff" stroke-width="1.5" stroke-linejoin="round" opacity="0.8" filter="url(#hudGlow)"/>
+
+                    <!-- 8. CORONA DE BLOQUES MECÁNICOS / ALMENAS (Con apertura superior para dejar paso libre a VOZ ACTIVA) -->
+                    <circle cx="160" cy="160" r="66" fill="none" stroke="#00e5ff" stroke-width="7" stroke-dasharray="12 8" stroke-dashoffset="14" opacity="0.85"/>
+                    <circle cx="160" cy="160" r="72" fill="none" stroke="#0077aa" stroke-width="1" stroke-dasharray="2 5" opacity="0.6"/>
+                    <circle cx="160" cy="160" r="59" fill="none" stroke="#00e5ff" stroke-width="1.2" opacity="0.7"/>
+
+                    <!-- 9. ICONO CIRCULAR DE MICRÓFONO INFERIOR CENTRAL -->
+                    <g transform="translate(160, 204)" filter="url(#hudGlow)">
+                        <!-- Aro del icono -->
+                        <circle cx="0" cy="0" r="8" fill="#04121d" stroke="#00ffff" stroke-width="1.2" />
+                        <!-- Cápsula del micrófono -->
+                        <rect x="-2" y="-5" width="4" height="6" rx="2" fill="none" stroke="#00ffff" stroke-width="0.9" />
+                        <!-- Soporte curvo -->
+                        <path d="M -3.6 -1.8 A 3.6 3.6 0 0 0 3.6 -1.8" fill="none" stroke="#00ffff" stroke-width="0.9" />
+                        <!-- Pie y base -->
+                        <line x1="0" y1="1.8" x2="0" y2="4" stroke="#00ffff" stroke-width="0.9" />
+                        <line x1="-2.5" y1="4" x2="2.5" y2="4" stroke="#00ffff" stroke-width="0.9" />
+                    </g>
+
+                    <!-- 10. TEXTO DE ESTADO CURVADO (Banda interior R=83, centrada entre R=72 y R=94.2) -->
+                    <text font-size="7" fill="#00e5ff" font-family="'Share Tech Mono', monospace" letter-spacing="1.5" filter="url(#hudGlow)">
+                        <textPath href="#statusTextPath" startOffset="50%" text-anchor="middle">
+                            ESTADO: <tspan id="stateText">REPOSO</tspan> // MIC: ACTIVO
+                        </textPath>
+                    </text>
+                </svg>
+
+                <div class="title-hud">ATLAS</div>
+                <div class="subtitle-hud">VOZ ACTIVA</div>
+
+                <div class="core center-abs">
+                    <!-- Esfera de energía base y destello -->
+                    <div class="core-glow center-abs"></div>
+
+                    <!-- Malla geométrica neural multicapa tipo reactor cuántico -->
+                    <svg class="core-svg center-abs" viewBox="0 0 200 200">
+                        <defs>
+                            <radialGradient id="plasmaGlow" cx="50%" cy="50%" r="50%">
+                                <stop offset="0%" stop-color="#ffffff" stop-opacity="1"/>
+                                <stop offset="25%" stop-color="#00ffff" stop-opacity="0.9"/>
+                                <stop offset="65%" stop-color="#0066ff" stop-opacity="0.5"/>
+                                <stop offset="100%" stop-color="#002266" stop-opacity="0"/>
+                            </radialGradient>
+                            <filter id="glowFilter" x="-30%" y="-30%" width="160%" height="160%">
+                                <feGaussianBlur stdDeviation="2.5" result="blur" />
+                                <feMerge>
+                                    <feMergeNode in="blur" />
+                                    <feMergeNode in="SourceGraphic" />
+                                </feMerge>
+                            </filter>
+                        </defs>
+
+                        <!-- Capa 1: Hexagrama / Icosaedro Sagrado Rotatorio -->
+                        <g class="neural-lattice" filter="url(#glowFilter)">
+                            <!-- Estrella de triángulos entrelazados (Geometría del Reactor) -->
+                            <polygon points="100,20 169,140 31,140" fill="none" stroke="currentColor" stroke-width="1.2" opacity="0.75"/>
+                            <polygon points="100,180 31,60 169,60" fill="none" stroke="currentColor" stroke-width="1.2" opacity="0.75"/>
+                            <polygon points="20,100 140,31 140,169" fill="none" stroke="currentColor" stroke-width="0.8" opacity="0.5"/>
+                            <polygon points="180,100 60,169 60,31" fill="none" stroke="currentColor" stroke-width="0.8" opacity="0.5"/>
+                            
+                            <!-- Anillo interior conector con nodos -->
+                            <circle cx="100" cy="100" r="80" fill="none" stroke="currentColor" stroke-width="1" stroke-dasharray="4 6" opacity="0.6"/>
+                            <circle cx="100" cy="100" r="55" fill="none" stroke="currentColor" stroke-width="1" opacity="0.5"/>
+
+                            <!-- Rayos diagonales de convergencia -->
+                            <line x1="20" y1="100" x2="180" y2="100" stroke="currentColor" stroke-width="0.8" opacity="0.4"/>
+                            <line x1="100" y1="20" x2="100" y2="180" stroke="currentColor" stroke-width="0.8" opacity="0.4"/>
+                            <line x1="43" y1="43" x2="157" y2="157" stroke="currentColor" stroke-width="0.8" opacity="0.4"/>
+                            <line x1="157" y1="43" x2="43" y2="157" stroke="currentColor" stroke-width="0.8" opacity="0.4"/>
+
+                            <!-- Nodos de sinapsis luminosos -->
+                            <circle cx="100" cy="20" r="3" fill="#fff" />
+                            <circle cx="169" cy="140" r="3" fill="#fff" />
+                            <circle cx="31" cy="140" r="3" fill="#fff" />
+                            <circle cx="100" cy="180" r="3" fill="#fff" />
+                            <circle cx="31" cy="60" r="3" fill="#fff" />
+                            <circle cx="169" cy="60" r="3" fill="#fff" />
+                            <circle cx="100" cy="100" r="4" fill="#fff" filter="url(#glowFilter)" />
+                        </g>
+
+                        <!-- Capa 2: Constelación contrarrotatoria con arcos de plasma -->
+                        <g class="plasma-lattice">
+                            <circle cx="100" cy="100" r="40" fill="none" stroke="currentColor" stroke-width="1.5" stroke-dasharray="12 8" opacity="0.8"/>
+                            <circle cx="100" cy="100" r="22" fill="none" stroke="#ffffff" stroke-width="1.2" opacity="0.9"/>
+                            
+                            <!-- Constelación orbital de partículas -->
+                            <circle cx="100" cy="60" r="2" fill="#fff" />
+                            <circle cx="140" cy="100" r="2" fill="#fff" />
+                            <circle cx="100" cy="140" r="2" fill="#fff" />
+                            <circle cx="60" cy="100" r="2" fill="#fff" />
+                        </g>
+                    </svg>
+
+                    <!-- Punto focal central superbrillante (Singularidad) -->
+                    <div class="core-singularity center-abs"></div>
+                </div>
+            </div>
+
+            <div class="settings-group" id="settingsGroup">
+                <div class="settings-label">Sistema & Identidad</div>
+                <div style="display:flex; gap:8px;">
+                    <button class="glass-btn" onclick="openSkillsManager()" style="flex:1; justify-content:center; gap:8px;">
+                        ⚙️ Extensiones
+                    </button>
+                    <button class="glass-btn" onclick="openRoutinesManager()" style="flex:1; justify-content:center; gap:8px;">
+                        ⏰ Rutinas
+                    </button>
+                </div>
+                <input type="text" id="identityInput" class="glass-input" placeholder="Nombre (ej: Juanes)" value="" title="Identidad detectada">
+                <select id="voiceSelect" class="glass-input" title="Seleccionar Voz">
+                    <option value="male">👨 Voz Álvaro</option>
+                    <option value="female">👩 Voz Elvira</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- PANEL DERECHO (CHAT) -->
+        <div class="panel-right">
+            <div class="chat-container" id="chatBox">
+                <div class="msg atlas">Hola, soy Atlas. ¿En qué puedo ayudarte?</div>
+            </div>
+
+            <div class="input-group">
+                <button class="btn-mic" id="micButton" onclick="toggleMic()">🎙️</button>
+                <input type="text" id="commandInput" class="glass-input" placeholder="Escribe un comando a Atlas..." onkeypress="handleEnter(event)">
+                <button class="glass-btn" onclick="sendCommandText()" style="padding: 15px 25px;">Enviar ➔</button>
+            </div>
+        </div>
+
     </div>
 
     <script>
@@ -88,18 +700,101 @@
 
         const screen = document.getElementById('screen');
         const stateText = document.getElementById('stateText');
-        const animationLayer = document.getElementById('animationLayer');
+        const lottiePlayer = document.getElementById('atlasLottie');
         const chatBox = document.getElementById('chatBox');
         const input = document.getElementById('commandInput');
         const micButton = document.getElementById('micButton');
         const voiceSelect = document.getElementById('voiceSelect');
         const identityInput = document.getElementById('identityInput');
 
+        // Diccionario de traducción de estados para la interfaz en español
+        const STATE_LABELS_ES = {
+            'IDLE': 'REPOSO',
+            'LISTENING': 'ESCUCHANDO',
+            'THINKING': 'PENSANDO',
+            'SPEAKING': 'HABLANDO'
+        };
+
+        function updateStateUI(state) {
+            const upper = state.toUpperCase();
+            stateText.innerText = STATE_LABELS_ES[upper] || upper;
+            screen.className = 'screen-container state-' + state.toLowerCase();
+        }
+
         let isRecording = false;
+        let currentAudio = null;
+        let expectResponse = false;
         
         // --- SPEECH RECOGNITION (STT Nativo del navegador) ---
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         let recognition = null;
+
+        function showMicPermissionHelp() {
+            appendMessage('atlas', `
+                <div style="background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.35); border-radius: 12px; padding: 14px 16px; margin: 6px 0;">
+                    <b style="color: #fca5a5; display: flex; align-items: center; gap: 8px; font-size: 14px;">
+                        🔒 Permiso de micrófono bloqueado en el navegador
+                    </b>
+                    <p style="margin: 6px 0 8px 0; font-size: 13px; color: #cbd5e1; line-height: 1.5;">
+                        Tu navegador tiene bloqueado el acceso al micrófono para esta página. Para desbloquearlo en 5 segundos:
+                    </p>
+                    <ol style="margin: 0; padding-left: 18px; font-size: 12px; color: #94a3b8; line-height: 1.7;">
+                        <li>Haz clic en el <b>icono del candado 🔒</b> o <b>ajustes del sitio ⚙️</b> a la izquierda de la barra de direcciones URL.</li>
+                        <li>Busca la opción <b>Micrófono</b> y cámbiala a <b>Permitir</b> (o haz clic en "Restablecer permisos").</li>
+                        <li>Recarga la página (<b>F5</b>) y vuelve a pulsar el botón 🎙️.</li>
+                    </ol>
+                </div>
+            `);
+        }
+
+        async function ensureMicPermission() {
+            // 1. Detección de contexto seguro (HTTPS o localhost)
+            if (!window.isSecureContext) {
+                appendMessage('atlas', `
+                    <div style="background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.35); border-radius: 12px; padding: 14px 16px; margin: 6px 0;">
+                        <b style="color: #fcd34d; display: flex; align-items: center; gap: 8px; font-size: 14px;">
+                            ⚠️ Contexto no seguro (HTTP en red local)
+                        </b>
+                        <p style="margin: 6px 0; font-size: 12.5px; color: #cbd5e1; line-height: 1.5;">
+                            Por seguridad estándar, los navegadores bloquean el micrófono fuera de <code>localhost</code> si la conexión no es HTTPS.
+                        </p>
+                        <p style="margin: 4px 0; font-size: 12px; color: #94a3b8; line-height: 1.6;">
+                            • Si estás en el mismo ordenador: entra por <a href="http://localhost:8080" style="color:#00e5ff; font-weight: bold;">http://localhost:8080</a><br>
+                            • Si estás desde una tablet o móvil por WiFi: entra con conexión segura a <a href="https://${window.location.hostname}:8443" style="color:#00e5ff; font-weight: bold;">https://${window.location.hostname}:8443</a> (acepta el aviso de certificado la primera vez).
+                        </p>
+                    </div>
+                `);
+                return false;
+            }
+
+            // 2. Comprobar permisos con Permissions API si está soportado
+            if (navigator.permissions && navigator.permissions.query) {
+                try {
+                    const status = await navigator.permissions.query({ name: 'microphone' });
+                    if (status.state === 'denied') {
+                        showMicPermissionHelp();
+                        return false;
+                    }
+                } catch (e) {}
+            }
+
+            // 3. Forzar el diálogo nativo de permisos del navegador usando getUserMedia
+            if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    // Detener las pistas de prueba para liberar el micro para SpeechRecognition
+                    stream.getTracks().forEach(track => track.stop());
+                    return true;
+                } catch (err) {
+                    console.warn("[Mic] Error al solicitar getUserMedia:", err);
+                    if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+                        showMicPermissionHelp();
+                        return false;
+                    }
+                }
+            }
+            return true;
+        }
 
         if (SpeechRecognition) {
             recognition = new SpeechRecognition();
@@ -110,11 +805,31 @@
             recognition.onstart = () => {
                 isRecording = true;
                 micButton.classList.add('recording');
+                updateStateUI('LISTENING');
                 ws.send(JSON.stringify({ event: 'WAKE_WORD_DETECTED' }));
             };
 
             recognition.onresult = (event) => {
-                const transcript = event.results[0][0].transcript;
+                const transcript = event.results[0][0].transcript.toLowerCase();
+                
+                // Si Atlas está hablando (Barge-in / Interrupción)
+                if (currentAudio) {
+                    const stopWords = ['atlas para', 'atlas calla', 'atlas silencio', 'atlas stop', 'atlas detente'];
+                    const isInterruption = stopWords.some(word => transcript.includes(word));
+                    
+                    if (isInterruption) {
+                        console.log("[Web] 🛑 Interrupción detectada. Cortando audio.");
+                        currentAudio.pause();
+                        currentAudio = null;
+                        
+                        updateStateUI('THINKING');
+                        appendMessage('user', `(Interrumpe) ${transcript}`);
+                    } else {
+                        // Si no es una interrupción clara, ignoramos el audio para no hacer eco de su propia voz
+                        return;
+                    }
+                }
+
                 appendMessage('user', transcript);
                 ws.send(JSON.stringify({ 
                     event: 'TEXT_COMMAND', 
@@ -127,12 +842,23 @@
 
             recognition.onerror = (event) => {
                 console.error("Error en reconocimiento de voz: ", event.error);
-                appendMessage('atlas', '⚠️ Hubo un error al escuchar tu micrófono.');
+                if (event.error === 'not-allowed') {
+                    showMicPermissionHelp();
+                } else if (event.error === 'service-not-allowed') {
+                    appendMessage('atlas', '⚠️ El servicio de reconocimiento de voz del navegador no está disponible o está restringido.');
+                } else if (event.error !== 'no-speech') {
+                    appendMessage('atlas', '⚠️ Hubo un error al escuchar tu micrófono: ' + event.error);
+                }
             };
 
             recognition.onend = () => {
                 isRecording = false;
                 micButton.classList.remove('recording');
+                
+                // Si la IA no está procesando ni hablando, volvemos a IDLE visualmente
+                if (stateText.innerText === 'ESCUCHANDO') {
+                    updateStateUI('IDLE');
+                }
             };
         } else {
             console.warn("SpeechRecognition no está soportado en este navegador.");
@@ -143,23 +869,54 @@
         ws.onmessage = async (event) => {
             // Manejo de AUDIO (Binario) desde el TTS de Atlas
             if (event.data instanceof ArrayBuffer) {
+                if (currentAudio) currentAudio.pause(); // Detener el anterior si lo hubiera
+                
                 const audioBlob = new Blob([event.data], { type: 'audio/wav' });
                 const audioUrl = URL.createObjectURL(audioBlob);
-                const audio = new Audio(audioUrl);
-                audio.play();
+                currentAudio = new Audio(audioUrl);
+                
+                currentAudio.onended = () => {
+                    currentAudio = null;
+                    if (expectResponse) {
+                        expectResponse = false;
+                        // Forzar cambio visual a ESCUCHANDO de inmediato para que el usuario sepa que le escucha
+                        updateStateUI('LISTENING');
+                        
+                        setTimeout(() => {
+                            try {
+                                if (recognition) {
+                                    if (isRecording) recognition.stop();
+                                    setTimeout(() => recognition.start(), 50);
+                                }
+                            } catch (e) {
+                                console.warn("Error reiniciando reconocimiento:", e);
+                            }
+                        }, 250);
+                    } else {
+                        updateStateUI('IDLE');
+                    }
+                };
+                
+                currentAudio.play();
                 return;
             }
 
             // Manejo de ESTADOS (JSON)
             const data = JSON.parse(event.data);
-            if (data.state && data.animation) {
-                stateText.innerText = data.state;
-                animationLayer.className = `animation-overlay anim-${data.animation}`;
+            
+            if (data.event === 'OPEN_MIC') {
+                expectResponse = true;
+            }
+
+            if (data.state) {
+                updateStateUI(data.state);
                 
-                if(data.state === 'THINKING') screen.style.borderColor = '#0088ff';
-                else if(data.state === 'SPEAKING') screen.style.borderColor = '#ff0055';
-                else if(data.state === 'LISTENING') screen.style.borderColor = '#00ff00';
-                else screen.style.borderColor = '#333';
+                if (data.state === 'SPEAKING') {
+                    // Detener micrófono para que no se escuche a sí mismo por los altavoces
+                    if (isRecording && recognition) {
+                        recognition.stop();
+                    }
+                }
             }
 
             if (data.type === 'text_response') {
@@ -170,20 +927,36 @@
         function appendMessage(sender, text) {
             const div = document.createElement('div');
             div.className = `msg ${sender}`;
-            div.innerText = text;
+            if (sender === 'atlas') {
+                div.innerHTML = text;
+            } else {
+                div.innerText = text;
+            }
             chatBox.appendChild(div);
             chatBox.scrollTop = chatBox.scrollHeight;
         }
 
-        function toggleMic() {
+        async function toggleMic() {
             if (!recognition) {
-                alert("Tu navegador no soporta reconocimiento de voz nativo. Usa texto.");
+                appendMessage('atlas', '⚠️ Tu navegador actual no soporta reconocimiento de voz nativo (SpeechRecognition). Te sugerimos abrir la interfaz en <b>Google Chrome</b> o <b>Microsoft Edge</b>.');
                 return;
             }
-            if (!isRecording) {
-                recognition.start();
-            } else {
+            if (isRecording) {
                 recognition.stop();
+                return;
+            }
+
+            // Asegurar permisos y contexto antes de activar
+            const granted = await ensureMicPermission();
+            if (!granted) return;
+
+            try {
+                recognition.start();
+            } catch (err) {
+                console.warn("[Mic] Error al iniciar recognition:", err);
+                if (err.name === 'InvalidStateError') {
+                    try { recognition.stop(); } catch(e){}
+                }
             }
         }
 
@@ -217,7 +990,7 @@
 
         async function loadSkillsList() {
             const listDiv = document.getElementById('skillsList');
-            listDiv.innerHTML = '<p>Cargando extensiones...</p>';
+            listDiv.innerHTML = '<p style="color:#94a3b8; text-align:center;">Cargando extensiones...</p>';
             try {
                 const res = await fetch('/api/skills');
                 const skills = await res.json();
@@ -227,8 +1000,8 @@
                     skillCard.className = 'skill-card';
                     skillCard.innerHTML = `
                         <div>
-                            <strong>${s.name.toUpperCase()}</strong>
-                            <div style="font-size:12px; color:#aaa; margin-top:5px;">Archivo: ${s.filename}</div>
+                            <div class="skill-title">${s.name.toUpperCase()}</div>
+                            <div class="skill-file">📂 ${s.filename}</div>
                         </div>
                         <button class="toggle-btn ${s.active ? 'active' : ''}" onclick="toggleSkill('${s.filename}', ${!s.active})">
                             ${s.active ? 'ON' : 'OFF'}
@@ -237,7 +1010,7 @@
                     listDiv.appendChild(skillCard);
                 });
             } catch (e) {
-                listDiv.innerHTML = '<p style="color:red">Error cargando skills.</p>';
+                listDiv.innerHTML = '<p style="color:#ef4444; text-align:center;">Error cargando skills.</p>';
             }
         }
 
@@ -252,6 +1025,157 @@
                     loadSkillsList(); // Recargar lista visual
                 } else {
                     alert("Error al cambiar estado de la skill");
+                }
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        // --- GESTOR DE RUTINAS ---
+        let editingRoutineId = null;
+
+        function toggleMobileSettings() {
+            const group = document.getElementById('settingsGroup');
+            group.classList.toggle('show');
+        }
+
+        function openRoutinesManager() {
+            document.getElementById('routinesModal').style.display = 'flex';
+            loadRoutinesList();
+        }
+
+        function closeRoutinesManager() {
+            document.getElementById('routinesModal').style.display = 'none';
+        }
+
+        async function loadRoutinesList() {
+            const listDiv = document.getElementById('routinesList');
+            listDiv.innerHTML = '<p style="color:#94a3b8; text-align:center;">Cargando rutinas...</p>';
+            try {
+                const res = await fetch('/api/routines');
+                const routines = await res.json();
+                listDiv.innerHTML = '';
+                
+                if (routines.length === 0) {
+                    listDiv.innerHTML = '<p style="color:#94a3b8; text-align:center;">No hay rutinas programadas.</p>';
+                    return;
+                }
+
+                routines.forEach(r => {
+                    const rCard = document.createElement('div');
+                    rCard.className = 'skill-card';
+                    rCard.innerHTML = `
+                        <div style="flex: 1;">
+                            <div class="skill-title">${r.name.toUpperCase()} <span style="font-size: 10px; color:#4ade80; margin-left:8px;">👤 ${r.username || 'Juanes'}</span></div>
+                            <div class="skill-file">⏱️ ${r.cronExpression}</div>
+                            <div class="skill-file" style="color:#64748b; margin-top:2px;">"${r.prompt}"</div>
+                        </div>
+                        <div style="display:flex; gap:8px;">
+                            <button class="toggle-btn" style="color:#38bdf8; border: 1px solid rgba(56, 189, 248, 0.4);" onclick="editRoutineForm('${r.id}', '${r.name.replace(/'/g, "\\'")}', '${r.cronExpression}', '${r.prompt.replace(/'/g, "\\'")}', '${r.username || 'Juanes'}')">
+                                ✏️
+                            </button>
+                            <button class="toggle-btn ${r.active ? 'active' : ''}" onclick="toggleRoutine('${r.id}', ${!r.active})">
+                                ${r.active ? 'ON' : 'OFF'}
+                            </button>
+                            <button class="toggle-btn" style="color:#ef4444; border: 1px solid rgba(239, 68, 68, 0.4);" onclick="deleteRoutine('${r.id}')">
+                                🗑️
+                            </button>
+                        </div>
+                    `;
+                    listDiv.appendChild(rCard);
+                });
+            } catch (e) {
+                listDiv.innerHTML = '<p style="color:#ef4444; text-align:center;">Error cargando rutinas.</p>';
+            }
+        }
+
+        function editRoutineForm(id, name, cron, prompt, username) {
+            editingRoutineId = id;
+            document.getElementById('newRoutineName').value = name;
+            
+            // Parse cron "30 7 * * *" to "07:30"
+            const parts = cron.split(' ');
+            if (parts.length >= 2) {
+                const min = parts[0].padStart(2, '0');
+                const hr = parts[1].padStart(2, '0');
+                document.getElementById('newRoutineTime').value = `${hr}:${min}`;
+            }
+            
+            document.getElementById('newRoutinePrompt').value = prompt;
+            document.getElementById('identityInput').value = username;
+            
+            const btn = document.getElementById('saveRoutineBtn');
+            if(btn) {
+                btn.innerText = "Actualizar Rutina";
+                btn.style.background = "rgba(56, 189, 248, 0.2)";
+                btn.style.color = "#38bdf8";
+            }
+        }
+
+        async function toggleRoutine(id, activate) {
+            try {
+                const res = await fetch(`/api/routines/${id}/toggle`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ active: activate })
+                });
+                if (res.ok) loadRoutinesList();
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        async function deleteRoutine(id) {
+            if (!confirm('¿Seguro que quieres borrar esta rutina?')) return;
+            try {
+                const res = await fetch(`/api/routines/${id}`, { method: 'DELETE' });
+                if (res.ok) loadRoutinesList();
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        async function createManualRoutine() {
+            const name = document.getElementById('newRoutineName').value;
+            const time = document.getElementById('newRoutineTime').value;
+            const prompt = document.getElementById('newRoutinePrompt').value;
+            
+            if (!name || !time || !prompt) {
+                alert("Por favor, rellena todos los campos.");
+                return;
+            }
+
+            // Convertir hora (ej: "15:30") a formato cron ("30 15 * * *")
+            const [hour, minute] = time.split(':');
+            const cronExpression = `${parseInt(minute)} ${parseInt(hour)} * * *`;
+            const username = document.getElementById('identityInput').value || 'Juanes';
+
+            const method = editingRoutineId ? 'PUT' : 'POST';
+            const url = editingRoutineId ? `/api/routines/${editingRoutineId}` : '/api/routines';
+
+            try {
+                const res = await fetch(url, {
+                    method: method,
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, cronExpression, prompt, username })
+                });
+                
+                if (res.ok) {
+                    editingRoutineId = null;
+                    document.getElementById('newRoutineName').value = '';
+                    document.getElementById('newRoutineTime').value = '';
+                    document.getElementById('newRoutinePrompt').value = '';
+                    
+                    const btn = document.getElementById('saveRoutineBtn');
+                    if(btn) {
+                        btn.innerText = "Guardar Rutina";
+                        btn.style.background = "rgba(34, 197, 94, 0.2)";
+                        btn.style.color = "#4ade80";
+                    }
+
+                    loadRoutinesList();
+                } else {
+                    alert("Error al guardar la rutina");
                 }
             } catch (e) {
                 console.error(e);

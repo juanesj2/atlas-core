@@ -1,100 +1,119 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { getEmbedding, cosineSimilarity } from './embeddings.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const MEMORY_FILE = path.join(__dirname, '../../memory.json');
+const MEMORY_FILE = path.join(__dirname, '../../atlas_memory_vectors.json');
 
 /**
- * Inicializa el archivo de memoria si no existe.
- */
-const initMemory = () => {
-    if (!fs.existsSync(MEMORY_FILE)) {
-        const defaultMemory = {
-            global: ["Eres ATLAS, el asistente del hogar inteligente.", "La casa está ubicada en Madrid."],
-            users: {
-                juanes: ["Creador y administrador principal del sistema."]
-            }
-        };
-        fs.writeFileSync(MEMORY_FILE, JSON.stringify(defaultMemory, null, 2), 'utf-8');
-    }
-};
-
-/**
- * Lee la memoria completa del archivo.
+ * {
+ *    vectors: [
+ *       { id: "123", user: "juanes", text: "Mi perro se llama Toby", vector: [0.12, -0.4, ...] }
+ *    ]
+ * }
  */
 const readMemoryFile = () => {
-    initMemory();
+    if (!fs.existsSync(MEMORY_FILE)) {
+        const defaultMemory = { vectors: [] };
+        fs.writeFileSync(MEMORY_FILE, JSON.stringify(defaultMemory, null, 2), 'utf-8');
+        return defaultMemory;
+    }
     try {
         const data = fs.readFileSync(MEMORY_FILE, 'utf-8');
         return JSON.parse(data);
     } catch (e) {
-        console.error("[MemoryManager] Error leyendo memoria:", e);
-        return { global: [], users: {} };
+        console.error("[MemoryManager] Error leyendo memoria vectorial:", e);
+        return { vectors: [] };
     }
 };
 
-/**
- * Guarda el objeto de memoria en el archivo.
- */
 const writeMemoryFile = (memoryObj) => {
     try {
         fs.writeFileSync(MEMORY_FILE, JSON.stringify(memoryObj, null, 2), 'utf-8');
     } catch (e) {
-        console.error("[MemoryManager] Error escribiendo memoria:", e);
+        console.error("[MemoryManager] Error escribiendo memoria vectorial:", e);
     }
 };
 
 /**
- * Obtiene los recuerdos globales y los específicos de un usuario.
- * @param {string} username - Nombre del usuario (puede ser 'invitado' o vacío)
- * @returns {string} - Texto formateado para inyectar en el System Prompt
+ * Guarda un hecho convirtiéndolo a vector matemáticol.
  */
-export const getMemoryStringForUser = (username) => {
-    const mem = readMemoryFile();
-    let text = "MEMORIA A LARGO PLAZO DISPONIBLE:\n";
-    
-    if (mem.global && mem.global.length > 0) {
-        text += "- Datos generales de la casa: " + mem.global.join(" ") + "\n";
-    }
-
-    const cleanUser = username ? username.toLowerCase().trim() : 'invitado';
-
-    if (cleanUser !== 'invitado' && mem.users && mem.users[cleanUser]) {
-        text += `- Datos sobre el usuario actual (${cleanUser}): ` + mem.users[cleanUser].join(" ") + "\n";
-    } else if (cleanUser === 'invitado') {
-        text += "- Datos sobre el usuario actual: NINGUNO. Es un invitado no registrado.\n";
-    }
-
-    return text;
-};
-
-/**
- * Guarda un nuevo hecho para un usuario específico.
- * @param {string} username - Nombre del usuario
- * @param {string} fact - Hecho a recordar
- * @returns {boolean} - True si se guardó con éxito
- */
-export const saveFact = (username, fact) => {
+export const saveFact = async (username, fact) => {
     if (!username || username.trim() === '' || username.toLowerCase() === 'invitado') {
         console.log(`[MemoryManager] Intento de guardar para usuario inválido: ${username}`);
+        return false;
+    }
+
+    console.log(`[MemoryManager] Generando embedding para: "${fact}"...`);
+    const vector = await getEmbedding(fact);
+    
+    if (!vector) {
+        console.error("[MemoryManager] No se pudo guardar la memoria por error en embedding.");
         return false;
     }
 
     const cleanUser = username.toLowerCase().trim();
     const mem = readMemoryFile();
 
-    if (!mem.users) mem.users = {};
-    if (!mem.users[cleanUser]) mem.users[cleanUser] = [];
-
-    // Evitar duplicados
-    if (!mem.users[cleanUser].includes(fact)) {
-        mem.users[cleanUser].push(fact);
-        writeMemoryFile(mem);
-        console.log(`[MemoryManager] 🧠 Dato recordado para ${cleanUser}: "${fact}"`);
-        return true;
+    // Comprobar si ya existe texto idéntico
+    if (mem.vectors.some(v => v.user === cleanUser && v.text === fact)) {
+        return false; // Ya lo sabe
     }
+
+    mem.vectors.push({
+        id: Date.now().toString(),
+        user: cleanUser,
+        text: fact,
+        vector: vector
+    });
+
+    writeMemoryFile(mem);
+    console.log(`[MemoryManager] 🧠 Dato RAG guardado para ${cleanUser}: "${fact}"`);
+    return true;
+};
+
+/**
+ * Busca por Similitud Semántica (RAG).
+ */
+export const getMemoryForPrompt = async (username, prompt) => {
+    const cleanUser = username ? username.toLowerCase().trim() : 'invitado';
     
-    return false;
+    // Si es invitado, no buscamos en memoria personal
+    if (cleanUser === 'invitado') return "- Datos sobre el usuario: NINGUNO (Invitado).";
+
+    const mem = readMemoryFile();
+    const userVectors = mem.vectors.filter(v => v.user === cleanUser || v.user === 'global');
+
+    if (userVectors.length === 0) return `- Datos sobre ${cleanUser}: NINGUNO.`;
+
+    // 1. Convertir la pregunta del usuario en vector
+    const promptVector = await getEmbedding(prompt);
+    if (!promptVector) return "- Error de memoria vectorial.";
+
+    // 2. Calcular distancias
+    const results = userVectors.map(v => {
+        return {
+            text: v.text,
+            score: cosineSimilarity(promptVector, v.vector)
+        };
+    });
+
+    // 3. Ordenar de mayor a menor coincidencia
+    results.sort((a, b) => b.score - a.score);
+
+    // 4. Quedarnos solo con el Top 3 que superen un umbral mínimo (ej: 0.5)
+    const topResults = results.filter(r => r.score > 0.4).slice(0, 3);
+
+    if (topResults.length === 0) {
+        return `- No hay recuerdos específicos de ${cleanUser} relevantes para esta conversación.`;
+    }
+
+    let text = `MEMORIA A LARGO PLAZO RECUPERADA PARA '${cleanUser}' (Contexto RAG):\n`;
+    topResults.forEach((r, idx) => {
+        text += `${idx + 1}. ${r.text}\n`;
+    });
+
+    return text;
 };

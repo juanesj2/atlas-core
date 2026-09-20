@@ -39,8 +39,7 @@ export async function loadSkills() {
     }
 }
 
-// Inicializar el loader al arrancar
-await loadSkills();
+// Inicializar el loader al arrancar se hará desde index.js
 
 export const executeLocalTool = async (action, args) => {
     if (skillExecutors[action]) {

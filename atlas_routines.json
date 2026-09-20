@@ -1,0 +1,10 @@
+[
+  {
+    "id": "1789776850071",
+    "name": "Buenos dias",
+    "cronExpression": "30 7 * * *",
+    "prompt": "Dame los buenos dias alegre, dime el tiempo que va a hacer, preparame el cafe y ponme musica tranquilita",
+    "username": "Juanes",
+    "active": true
+  }
+]

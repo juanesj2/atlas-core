@@ -1,0 +1,121 @@
+const fs = require('fs');
+
+const createLinearRotation = (startAngle, endAngle, frames) => ({
+  a: 1,
+  k: [
+    { t: 0, s: [startAngle] },
+    { t: frames, s: [endAngle] }
+  ]
+});
+
+const createPulseScale = (frames) => ({
+  a: 1,
+  k: [
+    { t: 0, s: [100, 100], i: { x: [0.5], y: [0.5] }, o: { x: [0.5], y: [0.5] } },
+    { t: frames / 2, s: [120, 120], i: { x: [0.5], y: [0.5] }, o: { x: [0.5], y: [0.5] } },
+    { t: frames, s: [100, 100], i: { x: [0.5], y: [0.5] }, o: { x: [0.5], y: [0.5] } }
+  ]
+});
+
+const frames = 240;
+const lottie = {
+  v: '5.7.4',
+  fr: 60,
+  ip: 0,
+  op: frames,
+  w: 500,
+  h: 500,
+  nm: 'Atlas HUD',
+  ddd: 0,
+  assets: [],
+  layers: [
+    // LAYER 1: Core Pulse
+    {
+      ty: 4, nm: 'Core', ind: 1,
+      sr: 1, ks: {
+        o: { a: 0, k: 100 },
+        r: { a: 0, k: 0 },
+        p: { a: 0, k: [250, 250, 0] },
+        a: { a: 0, k: [0, 0, 0] },
+        s: createPulseScale(frames)
+      },
+      shapes: [
+        {
+          ty: 'gr', nm: 'Core Group',
+          it: [
+            { ty: 'el', nm: 'Circle', p: { a: 0, k: [0, 0] }, s: { a: 0, k: [140, 140] } },
+            { ty: 'fl', nm: 'Fill', c: { a: 0, k: [0, 1, 1, 1] }, o: { a: 0, k: 80 } },
+            { ty: 'tr', p: { a: 0, k: [0, 0] }, a: { a: 0, k: [0, 0] }, s: { a: 0, k: [100, 100] }, r: { a: 0, k: 0 }, o: { a: 0, k: 100 } }
+          ]
+        }
+      ]
+    },
+    // LAYER 2: Inner Ring (Counter Clockwise)
+    {
+      ty: 4, nm: 'Inner Ring', ind: 2,
+      sr: 1, ks: {
+        o: { a: 0, k: 100 },
+        r: createLinearRotation(360, 0, frames),
+        p: { a: 0, k: [250, 250, 0] },
+        a: { a: 0, k: [0, 0, 0] },
+        s: { a: 0, k: [100, 100, 100] }
+      },
+      shapes: [
+        {
+          ty: 'gr',
+          it: [
+            { ty: 'el', p: { a: 0, k: [0, 0] }, s: { a: 0, k: [220, 220] } },
+            { ty: 'st', c: { a: 0, k: [0, 1, 1, 1] }, w: { a: 0, k: 4 }, o: { a: 0, k: 100 }, d: [ { n: 'd', v: { a: 0, k: 40 } }, { n: 'g', v: { a: 0, k: 20 } } ] },
+            { ty: 'tr', p: { a: 0, k: [0, 0] }, a: { a: 0, k: [0, 0] }, s: { a: 0, k: [100, 100] }, r: { a: 0, k: 0 }, o: { a: 0, k: 100 } }
+          ]
+        }
+      ]
+    },
+    // LAYER 3: Middle Ring (Clockwise)
+    {
+      ty: 4, nm: 'Middle Ring', ind: 3,
+      sr: 1, ks: {
+        o: { a: 0, k: 100 },
+        r: createLinearRotation(0, 360, frames),
+        p: { a: 0, k: [250, 250, 0] },
+        a: { a: 0, k: [0, 0, 0] },
+        s: { a: 0, k: [100, 100, 100] }
+      },
+      shapes: [
+        {
+          ty: 'gr',
+          it: [
+            { ty: 'el', p: { a: 0, k: [0, 0] }, s: { a: 0, k: [320, 320] } },
+            { ty: 'st', c: { a: 0, k: [0, 0.66, 1, 1] }, w: { a: 0, k: 12 }, o: { a: 0, k: 80 }, d: [ { n: 'd', v: { a: 0, k: 10 } }, { n: 'g', v: { a: 0, k: 30 } } ] },
+            { ty: 'tr', p: { a: 0, k: [0, 0] }, a: { a: 0, k: [0, 0] }, s: { a: 0, k: [100, 100] }, r: { a: 0, k: 0 }, o: { a: 0, k: 100 } }
+          ]
+        }
+      ]
+    },
+    // LAYER 4: Outer Ring (Clockwise, Slow)
+    {
+      ty: 4, nm: 'Outer Ring', ind: 4,
+      sr: 1, ks: {
+        o: { a: 0, k: 100 },
+        r: createLinearRotation(0, 180, frames),
+        p: { a: 0, k: [250, 250, 0] },
+        a: { a: 0, k: [0, 0, 0] },
+        s: { a: 0, k: [100, 100, 100] }
+      },
+      shapes: [
+        {
+          ty: 'gr',
+          it: [
+            { ty: 'el', p: { a: 0, k: [0, 0] }, s: { a: 0, k: [420, 420] } },
+            { ty: 'st', c: { a: 0, k: [0, 1, 1, 1] }, w: { a: 0, k: 6 }, o: { a: 0, k: 60 }, d: [ { n: 'd', v: { a: 0, k: 150 } }, { n: 'g', v: { a: 0, k: 50 } } ] },
+            { ty: 'tr', p: { a: 0, k: [0, 0] }, a: { a: 0, k: [0, 0] }, s: { a: 0, k: [100, 100] }, r: { a: 0, k: 0 }, o: { a: 0, k: 100 } }
+          ]
+        }
+      ]
+    }
+  ]
+};
+
+fs.writeFileSync('public/atlas_hud.json', JSON.stringify(lottie, null, 2));
+console.log('Lottie generated successfully at public/atlas_hud.json');
+

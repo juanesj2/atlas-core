@@ -11,6 +11,9 @@ const __dirname = path.dirname(__filename);
 // Instancia global de Edge TTS
 const tts = new MsEdgeTTS();
 
+// Registro de satélites conectados para emitir mensajes proactivos
+const connectedSatellites = new Set();
+
 /**
  * Función helper para enviar estados visuales y animaciones al satélite.
  */
@@ -22,13 +25,32 @@ const sendSatelliteState = (ws, state, animation = 'default') => {
 };
 
 /**
+ * Emite un mensaje de voz a todos los satélites conectados (Proactividad).
+ */
+export const broadcastVoiceMessage = async (text, voiceType = 'male') => {
+    console.log(`[Broadcast] Enviando mensaje proactivo a ${connectedSatellites.size} satélites...`);
+    for (const ws of connectedSatellites) {
+        if (ws.readyState === ws.OPEN) {
+            await sendVoiceResponse(ws, text, voiceType);
+        }
+    }
+};
+
+/**
  * Gestiona el ciclo de vida y los mensajes de un WebSocket conectado (ESP32).
  * @param {WebSocket} ws 
  * @param {http.IncomingMessage} req 
  */
 export const handleSatelliteConnection = (ws, req) => {
     const clientIp = req ? req.socket.remoteAddress : 'unknown';
-    console.log(`[Satellite] 🟢 Nueva conexión desde: ${clientIp}`);
+    console.log(`[Satellite] 🛰️ Nueva conexión desde: ${clientIp}`);
+    
+    connectedSatellites.add(ws);
+
+    ws.on('close', () => {
+        console.log(`[Satellite] ❌ Satélite desconectado: ${clientIp}`);
+        connectedSatellites.delete(ws);
+    });
 
     // Historial a corto plazo para esta sesión
     let conversationHistory = [];
@@ -49,34 +71,28 @@ export const handleSatelliteConnection = (ws, req) => {
                 const profilesDir = path.join(__dirname, '../../voice_profiles');
                 const scriptPath = path.join(__dirname, '../biometrics/audio_pipeline.py');
                 
-                console.log('[Audio Pipeline] Analizando biometría y transcribiendo con Whisper...');
+                // Llamar al microservicio de Python en caliente
+                console.log(`[Satellite] 🧠 Procesando audio en caliente (Python)...`);
                 
-                exec(`python "${scriptPath}" "${tempAudioPath}" "${profilesDir}"`, async (error, stdout, stderr) => {
-                    let username = 'invitado';
-                    let textTranscription = '';
+                try {
+                    const pyRes = await fetch('http://127.0.0.1:8000/process_audio', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ filepath: tempAudioPath })
+                    });
                     
-                    if (!error && stdout) {
-                        try {
-                            const output = JSON.parse(stdout.trim());
-                            if (output.error === 'missing_dependencies') {
-                                console.log('[Audio Pipeline] ⚠️ Falta instalar dependencias (torch, speechbrain, faster-whisper).');
-                            } else if (output.user && output.text) {
-                                username = output.user;
-                                textTranscription = output.text;
-                            }
-                        } catch (e) {
-                            console.error('[Audio Pipeline] Error parseando JSON de Python:', stdout);
-                        }
-                    } else {
-                        console.error('[Audio Pipeline] Error ejecutando script:', error || stderr);
-                    }
-
-                    console.log(`[STT] 👤 Usuario: ${username} | 📝 Texto: "${textTranscription}"`);
-
-                    if (!textTranscription) {
-                        console.log('[STT] Audio vacío o ininteligible. Ignorando.');
+                    if (!pyRes.ok) throw new Error(`HTTP error! status: ${pyRes.status}`);
+                    
+                    const result = await pyRes.json();
+                    const username = result.user || 'invitado';
+                    const textTranscription = result.text || '';
+                    
+                    console.log(`[Satellite] 👤 Usuario: ${username}`);
+                    console.log(`[Satellite] 📝 Texto: ${textTranscription}`);
+                    
+                    if (!textTranscription || textTranscription.length <= 2) {
+                        console.log(`[Satellite] ⚠️ Audio demasiado corto o incomprensible.`);
                         sendSatelliteState(ws, 'IDLE', 'sleeping');
-                        if (fs.existsSync(tempAudioPath)) fs.unlinkSync(tempAudioPath);
                         return;
                     }
                     
@@ -87,9 +103,13 @@ export const handleSatelliteConnection = (ws, req) => {
 
                     await sendVoiceResponse(ws, response.text, 'male');
                     
-                    // Limpieza
+                } catch (e) {
+                    console.error('[Satellite] Error procesando audio con la API de Python:', e.message);
+                } finally {
+                    // Limpieza garantizada
                     if (fs.existsSync(tempAudioPath)) fs.unlinkSync(tempAudioPath);
-                });
+                }
+                
                 return;
             }
 
@@ -165,8 +185,19 @@ async function sendVoiceResponse(ws, text, voicePreference = 'male') {
             // Enviar el buffer binario por WebSocket al cliente o satélite
             if (ws.readyState === ws.OPEN) {
                 ws.send(audioBuffer, { binary: true });
+                console.log(`[Satellite] 🔊 Audio enviado (${audioBuffer.length} bytes)`);
+                
+                // Si Atlas se está despidiendo, cerramos la ventana de conversación.
+                const isFarewell = /adiós|hasta luego|nos vemos|que descanses|hasta pronto/i.test(text);
+                
+                if (isFarewell) {
+                    console.log("[Satellite] Despedida detectada. Cerrando micro.");
+                    setTimeout(() => sendSatelliteState(ws, 'IDLE', 'sleeping'), 2000);
+                } else {
+                    // MODO CONVERSACION CONTINUA: Se envia la senal para que el cliente abra el micro AL TERMINAR el audio
+                    ws.send(JSON.stringify({ event: 'OPEN_MIC' }));
+                }
             }
-            setTimeout(() => sendSatelliteState(ws, 'IDLE', 'sleeping'), 5000);
         });
 
         audioStream.on('error', (err) => {

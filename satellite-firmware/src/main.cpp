@@ -1,17 +1,22 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <WebSocketsClient.h>
+#include <ArduinoJson.h>
+#include <TFT_eSPI.h>
 #include <driver/i2s.h>
+#include "AtlasHUD.h"
 
 // --- CONFIGURACIÓN WIFI ---
 const char* ssid = "TU_WIFI_SSID";
 const char* password = "TU_WIFI_PASSWORD";
 
 // --- CONFIGURACIÓN SERVIDOR ATLAS ---
-const char* websocket_server = "192.168.1.100"; // Cambiar por la IP de tu torre
+const char* websocket_server = "192.168.1.100"; // Cambiar por la IP de tu PC / Servidor
 const int websocket_port = 8080;
 
 WebSocketsClient webSocket;
+TFT_eSPI tft = TFT_eSPI();
+AtlasHUDEngine hud(&tft);
 
 // --- CONFIGURACIÓN I2S (Micrófono INMP441) ---
 #define I2S_WS 15
@@ -23,6 +28,7 @@ WebSocketsClient webSocket;
 #define DMA_NUM_BUF 8
 
 bool isRecording = false;
+unsigned long recordingEndTime = 0;
 
 void setupI2S() {
     i2s_config_t i2s_config = {
@@ -54,60 +60,136 @@ void setupI2S() {
 void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
     switch(type) {
         case WStype_DISCONNECTED:
-            Serial.println("[WS] Desconectado");
+            Serial.println("[WS] Desconectado de Atlas Gateway");
+            hud.updateState(STATE_IDLE);
             break;
         case WStype_CONNECTED:
-            Serial.println("[WS] Conectado al servidor ATLAS");
-            // Aquí podríamos enviar un JSON diciendo "Soy el satélite del salón"
+            Serial.println("[WS] Conectado exitosamente al servidor ATLAS");
+            hud.updateState(STATE_IDLE);
             break;
-        case WStype_TEXT:
-            Serial.printf("[WS] Texto recibido: %s\n", payload);
-            // El servidor envía comandos JSON para cambiar las luces LED de estado (THINKING, IDLE...)
+        case WStype_TEXT: {
+            String msg = (char*)payload;
+            Serial.printf("[WS] Mensaje: %s\n", msg.c_str());
+            StaticJsonDocument<256> doc;
+            DeserializationError err = deserializeJson(doc, msg);
+            if (!err) {
+                if (doc.containsKey("state")) {
+                    String state = doc["state"];
+                    hud.updateStateFromString(state);
+                }
+            }
+            if (msg.indexOf("OPEN_MIC") >= 0) {
+                Serial.println("[WS] 🎤 Conversación Continua: Activando escucha...");
+                isRecording = true;
+                recordingEndTime = millis() + 8000;
+                hud.updateState(STATE_LISTENING);
+            }
             break;
+        }
         case WStype_BIN:
-            // Si el servidor nos manda audio TTS de vuelta, lo reproducimos por otro I2S o DAC
-            Serial.printf("[WS] Recibido %u bytes de audio binario\n", length);
+            // Buffer de audio TTS recibido
             break;
     }
 }
+
+bool isDemoMode = false;
+unsigned long lastDemoSwitch = 0;
+int demoStep = 0;
 
 void setup() {
     Serial.begin(115200);
 
-    // 1. Conectar WiFi
+    // 1. Inicializar HUD en Pantalla Circular GC9A01
+    hud.begin();
+
+    // 2. Conectar WiFi (con timeout para permitir pruebas en simulador sin red)
+    Serial.print("Conectando a WiFi...");
     WiFi.begin(ssid, password);
-    while (WiFi.status() != WL_CONNECTED) {
-        delay(500);
+    unsigned long wifiStart = millis();
+    bool wifiConnected = false;
+    
+    while (millis() - wifiStart < 3500) { // 3.5 segundos de margen
+        if (WiFi.status() == WL_CONNECTED) {
+            wifiConnected = true;
+            break;
+        }
+        delay(250);
         Serial.print(".");
     }
-    Serial.println("\n[WiFi] Conectado");
 
-    // 2. Configurar I2S
-    setupI2S();
-
-    // 3. Conectar a Atlas
-    webSocket.begin(websocket_server, websocket_port, "/");
-    webSocket.onEvent(webSocketEvent);
-    webSocket.setReconnectInterval(5000);
+    if (wifiConnected) {
+        Serial.println("\n[WiFi] Conectado! Modo Satelite Online.");
+        setupI2S();
+        webSocket.begin(websocket_server, websocket_port, "/");
+        webSocket.onEvent(webSocketEvent);
+        webSocket.setReconnectInterval(5000);
+    } else {
+        Serial.println("\n[WiFi] Sin conexion WiFi detectada.");
+        Serial.println("[ATLAS] 🚀 Activando MODO DEMOSTRACION / TEST (Ciclo automatico de estados).");
+        isDemoMode = true;
+    }
 }
 
+// --- UMBRALES DE VOZ ---
+#define VAD_THRESHOLD 2500
+#define RECORD_TIME_MS 5000
+
 void loop() {
+    // Actualizar animación suave del reactor cuántico a ~30 FPS sin parpadeo
+    hud.updateAnimation();
+
+    if (isDemoMode) {
+        // En modo demostración (para pruebas y simulador Wokwi):
+        // Alterna entre REPOSO, ESCUCHANDO, PENSANDO y HABLANDO cada 4 segundos
+        unsigned long now = millis();
+        if (now - lastDemoSwitch > 4000) {
+            lastDemoSwitch = now;
+            demoStep = (demoStep + 1) % 4;
+            switch(demoStep) {
+                case 0: hud.updateState(STATE_IDLE); break;
+                case 1: hud.updateState(STATE_LISTENING); break;
+                case 2: hud.updateState(STATE_THINKING); break;
+                case 3: hud.updateState(STATE_SPEAKING); break;
+            }
+        }
+        delay(5);
+        return;
+    }
+
     webSocket.loop();
 
-    // TODO: Detectar la "Wake Word" (Ej: "Atlas"). 
-    // Por simplicidad, simularemos que cuando isRecording es true, manda datos.
-    // Esto lo engancharemos a un botón físico o a una librería de Wake Word ligera.
+    size_t bytesIn = 0;
+    int16_t sampleBuffer[DMA_BUF_LEN];
     
-    // if (boton_pulsado) { isRecording = true; }
+    esp_err_t result = i2s_read(I2S_PORT, &sampleBuffer, sizeof(sampleBuffer), &bytesIn, 0);
+    
+    if (result == ESP_OK && bytesIn > 0) {
+        if (!isRecording) {
+            int64_t energy = 0;
+            for (int i = 0; i < bytesIn / 2; i++) {
+                energy += abs(sampleBuffer[i]);
+            }
+            int32_t avgEnergy = energy / (bytesIn / 2);
 
-    if (isRecording && webSocket.isConnected()) {
-        size_t bytesIn = 0;
-        int16_t sampleBuffer[DMA_BUF_LEN];
+            if (avgEnergy > VAD_THRESHOLD) {
+                Serial.printf("[VAD] 🚨 Voz detectada (Energía: %d). Grabando...\n", avgEnergy);
+                isRecording = true;
+                recordingEndTime = millis() + RECORD_TIME_MS;
+                hud.updateState(STATE_LISTENING);
+                webSocket.sendTXT("{\"event\": \"WAKE_WORD_DETECTED\"}");
+            }
+        }
         
-        esp_err_t result = i2s_read(I2S_PORT, &sampleBuffer, sizeof(sampleBuffer), &bytesIn, portMAX_DELAY);
-        if (result == ESP_OK && bytesIn > 0) {
-            // Mandamos el audio binario directamente a la torre
-            webSocket.sendBIN((uint8_t*)sampleBuffer, bytesIn);
+        if (isRecording) {
+            if (webSocket.isConnected()) {
+                webSocket.sendBIN((uint8_t*)sampleBuffer, bytesIn);
+            }
+            
+            if (millis() > recordingEndTime) {
+                Serial.println("[VAD] 🛑 Grabación finalizada.");
+                isRecording = false;
+                hud.updateState(STATE_THINKING);
+            }
         }
     }
 }

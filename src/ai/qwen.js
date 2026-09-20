@@ -2,24 +2,34 @@ import ollama from 'ollama';
 import dotenv from 'dotenv';
 import { atlasTools, executeLocalTool } from './tools.js';
 import { sendCommandToLaravel } from '../bridge/api.js';
-import { getMemoryStringForUser } from './memoryManager.js';
+import { getMemoryForPrompt } from './memoryManager.js';
+import { getEnvironmentContext } from '../skills/home_assistant.js';
 
 dotenv.config();
 
 const MOCK_AI = process.env.MOCK_AI === 'true';
 const MODEL = process.env.OLLAMA_MODEL || 'qwen2.5-coder:7b'; 
 
-const getSystemPrompt = (username) => {
+const getSystemPrompt = async (username, userPrompt) => {
     const now = new Date();
     const timeString = now.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
     const dateString = now.toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-    const memoryString = getMemoryStringForUser(username);
+    
+    console.log(`[Context] 🧠 Recuperando memoria RAG para "${username}"...`);
+    const memoryString = await getMemoryForPrompt(username, userPrompt);
+    
+    console.log(`[Context] 🏠 Analizando sensores de la casa...`);
+    const haContext = await getEnvironmentContext();
     
     let basePrompt = `Eres ATLAS (Asistente Tecnológico Local de Automatización y Servicios).
 Tu personalidad es inspirada en J.A.R.V.I.S de Iron Man: eres extremadamente eficiente, educado y resolutivo.
 La fecha de hoy es ${dateString} y la hora actual es ${timeString}.
 
+---
+${haContext}
+---
 ${memoryString}
+---
 
 REGLAS DE FORMATO (CRÍTICO):
 1. Tus respuestas serán leídas en voz alta. Usa un lenguaje natural y conversacional.
@@ -43,10 +53,10 @@ export const askAtlas = async (userPrompt, history = [], username = 'invitado') 
         await new Promise((resolve) => setTimeout(resolve, 500));
         
         // Extraemos la info para que el usuario pueda ver que el "cableado" funciona
-        const systemPrompt = getSystemPrompt(username);
+        const systemPrompt = await getSystemPrompt(username, userPrompt);
         const historyCount = history.length;
         
-        const debugText = `Simulación completada. He recibido tu mensaje: ${userPrompt}. Tienes ${historyCount} mensajes en el historial corto. Mi memoria dice: ${getMemoryStringForUser(username)}`;
+        const debugText = `Simulación completada. He recibido tu mensaje: ${userPrompt}. Tienes ${historyCount} mensajes en el historial corto.`;
         
         // Simulamos que Qwen guarda algo si decimos la palabra "guardar"
         if (userPrompt.toLowerCase().includes('guardar')) {
@@ -64,8 +74,9 @@ export const askAtlas = async (userPrompt, history = [], username = 'invitado') 
     history.push({ role: 'user', content: userPrompt });
 
     // Clonamos el historial para enviar a la IA añadiendo el system prompt al inicio
+    const finalSystemPrompt = await getSystemPrompt(username, userPrompt);
     let messages = [
-        { role: 'system', content: getSystemPrompt(username) },
+        { role: 'system', content: finalSystemPrompt },
         ...history
     ];
 

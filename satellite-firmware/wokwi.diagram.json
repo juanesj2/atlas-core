@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "author": "Atlas AI",
+  "editor": "wokwi",
+  "parts": [
+    { "type": "board-esp32-devkit-c-v4", "id": "esp", "top": 10, "left": -80, "attrs": {} },
+    { "type": "wokwi-gc9a01", "id": "lcd", "top": -30, "left": 180, "attrs": {} }
+  ],
+  "connections": [
+    [ "esp:GND.1", "lcd:GND", "black", [ "v0" ] ],
+    [ "esp:3V3", "lcd:VCC", "red", [ "v0" ] ],
+    [ "esp:18", "lcd:SCL", "green", [ "v0" ] ],
+    [ "esp:23", "lcd:SDA", "blue", [ "v0" ] ],
+    [ "esp:22", "lcd:RES", "gray", [ "v0" ] ],
+    [ "esp:4", "lcd:DC", "orange", [ "v0" ] ],
+    [ "esp:5", "lcd:CS", "yellow", [ "v0" ] ],
+    [ "esp:21", "lcd:BLK", "purple", [ "v0" ] ]
+  ]
+}

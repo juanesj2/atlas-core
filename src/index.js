@@ -1,10 +1,12 @@
 import dotenv from 'dotenv';
 import express from 'express';
 import { createServer } from 'http';
+import https from 'https';
 import { WebSocketServer } from 'ws';
 import { handleSatelliteConnection } from './socket/satellite.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import fs from 'fs';
 
 dotenv.config();
 
@@ -50,12 +52,80 @@ app.post('/api/skills/toggle', async (req, res) => {
 
     try {
         fs.renameSync(currentPath, newPath);
-        await loadSkills(); // Recargar el cerebro de Qwen en caliente
-        res.json({ success: true, newFilename, active: activate });
-    } catch (err) {
-        res.status(500).json({ success: false, error: err.message });
+        // Recargar el registro de skills
+        await loadSkills();
+        res.json({ success: true, newFilename });
+    } catch (e) {
+        console.error(e);
+        res.status(500).send('Error modificando la skill');
     }
 });
+
+// Endpoint Proactivo: Permite que sensores externos (HA) hagan hablar a Atlas
+import { broadcastVoiceMessage } from './socket/satellite.js';
+import { askAtlas } from './ai/qwen.js';
+
+app.post('/api/trigger', async (req, res) => {
+    const { event, context, username } = req.body;
+    
+    if (!event) return res.status(400).json({ error: 'Falta el campo event' });
+
+    console.log(`[API] ⚡ Disparo Proactivo recibido: ${event}`);
+    
+    const internalPrompt = `EVENTO DEL SISTEMA (Responde proactivamente): El sistema domótico ha detectado un evento llamado '${event}'. 
+    Contexto adicional: ${context || 'Ninguno'}.
+    Genera un comentario natural de 1 o 2 frases hacia el usuario informando de esto, o dándole los buenos días si aplica. No expliques que eres una IA, simplemente díselo de forma natural.`;
+    
+    try {
+        const response = await askAtlas(internalPrompt, [], username || 'Juanes');
+        
+        // Transmitir a todos los altavoces de la casa
+        await broadcastVoiceMessage(response.text, 'female');
+        
+        res.json({ success: true, message: 'Mensaje transmitido a los satélites', text: response.text });
+    } catch (e) {
+        console.error('[API] Error en evento proactivo:', e);
+        res.status(500).json({ error: 'Error procesando el evento' });
+    }
+});
+
+// === API GESTOR DE RUTINAS ===
+import { loadRoutines, getRoutines, addRoutine, deleteRoutine, toggleRoutine, editRoutine } from './ai/routineManager.js';
+
+app.get('/api/routines', (req, res) => {
+    res.json(getRoutines());
+});
+
+app.post('/api/routines', (req, res) => {
+    const { name, cronExpression, prompt, username } = req.body;
+    if (!name || !cronExpression || !prompt) return res.status(400).json({ error: 'Faltan parámetros' });
+    
+    const r = addRoutine(name, cronExpression, prompt, username);
+    res.json({ success: true, routine: r });
+});
+
+app.put('/api/routines/:id', (req, res) => {
+    const { name, cronExpression, prompt, username } = req.body;
+    if (!name || !cronExpression || !prompt) return res.status(400).json({ error: 'Faltan parámetros' });
+    
+    const r = editRoutine(req.params.id, name, cronExpression, prompt, username);
+    res.json({ success: r !== null, routine: r });
+});
+
+app.delete('/api/routines/:id', (req, res) => {
+    const success = deleteRoutine(req.params.id);
+    res.json({ success });
+});
+
+app.post('/api/routines/:id/toggle', (req, res) => {
+    const success = toggleRoutine(req.params.id, req.body.active);
+    res.json({ success });
+});
+
+// Cargar rutinas y skills en el arranque
+await loadSkills();
+loadRoutines();
+
 // ===========================================
 
 const server = createServer(app);
@@ -142,3 +212,34 @@ wss.on('connection', (ws, req) => {
 wss.on('error', (error) => {
     console.error('❌ WebSocket Server Error:', error);
 });
+
+// === SERVIDOR HTTPS (Permite usar el micrófono desde tablets/móviles por WiFi) ===
+const sslKeyPath = path.join(__dirname, '../ssl/key.pem');
+const sslCertPath = path.join(__dirname, '../ssl/cert.pem');
+if (fs.existsSync(sslKeyPath) && fs.existsSync(sslCertPath)) {
+    try {
+        const httpsServer = https.createServer({
+            key: fs.readFileSync(sslKeyPath),
+            cert: fs.readFileSync(sslCertPath)
+        }, app);
+
+        const wssHttps = new WebSocketServer({ server: httpsServer });
+        wssHttps.on('connection', (ws, req) => {
+            const clientIp = req.socket.remoteAddress;
+            console.log(`🔌 [HTTPS/WSS] Satellite / Web client connected from ${clientIp}`);
+            handleSatelliteConnection(ws);
+        });
+
+        wssHttps.on('error', (error) => {
+            console.error('❌ WSS (HTTPS) Error:', error);
+        });
+
+        const HTTPS_PORT = process.env.HTTPS_PORT || 8443;
+        httpsServer.listen(HTTPS_PORT, () => {
+            console.log(`🔒 HTTPS Server running on https://localhost:${HTTPS_PORT} (o https://192.168.1.43:${HTTPS_PORT})`);
+        });
+    } catch (e) {
+        console.warn('⚠️ No se pudo iniciar el servidor HTTPS:', e.message);
+    }
+}
+
