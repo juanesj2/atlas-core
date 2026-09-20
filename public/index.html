@@ -364,8 +364,9 @@
         .btn-mic.recording { animation: pulseMic 0.5s infinite alternate; background: #ef4444; box-shadow: 0 0 25px #ef4444; }
         @keyframes pulseMic { 0% { transform: scale(0.95); } 100% { transform: scale(1.1); } }
         
-        /* --- MODAL SKILLS --- */
+        /* --- MODAL SKILLS & BIOMETRICS --- */
         .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); backdrop-filter: blur(8px); z-index: 1000; justify-content: center; align-items: center; }
+        .modal-overlay.open { display: flex !important; }
         .modal-content { background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.1); width: 90%; max-width: 500px; padding: 25px; border-radius: 20px; color: white; display: flex; flex-direction: column; max-height: 85vh; box-shadow: 0 20px 50px rgba(0,0,0,0.5); }
         .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 15px; }
         .modal-header h2 { margin: 0; font-weight: 800; font-size: 20px; display: flex; align-items: center; gap: 10px; }
@@ -1309,8 +1310,8 @@
         function isVoiceEnrollmentRequest(text) {
             if (!text) return false;
             const clean = text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9\s]/g, " ");
-            return /\b(registra|registrar|aprende|aprender|guarda|guardar|memoriza|memorizar|graba|grabar|crea|crear)\b.*\b(voz|huella|timbre)\b/i.test(clean) ||
-                   /\b(registrame|aprende mi voz|graba mi voz|memoriza mi voz|guardar mi voz|aprender mi voz)\b/i.test(clean);
+            return /\b(registra|registro|registres|registrame|registrar|aprende|aprendo|aprendeme|aprender|guarda|guardo|guardar|memoriza|memorizo|memorizar|graba|grabo|grabar|calibra|calibro|calibrar)\b.*\b(voz|huella|timbre|audio|perfil)\b/i.test(clean) ||
+                   /\b(registrame|registro mi voz|registra mi voz|aprende mi voz|graba mi voz|memoriza mi voz|guardar mi voz|aprender mi voz|calibra mi voz)\b/i.test(clean);
         }
 
         function sendUserVoiceCommand(text) {
@@ -1764,6 +1765,7 @@
         ws.onmessage = async (event) => {
             // Manejo de AUDIO (Binario) desde el TTS de Atlas
             if (event.data instanceof ArrayBuffer) {
+                if (!event.data || event.data.byteLength < 50) return;
                 clearTimeout(pauseResumeTimeout);
                 isAudioPaused = false;
                 if (currentAudio) {
@@ -2192,6 +2194,7 @@
         function openVoiceProfilesModal() {
             const modal = document.getElementById('voiceProfilesModal');
             if (modal) {
+                modal.style.display = 'flex';
                 modal.classList.add('open');
                 loadVoiceProfilesList();
                 const identifyBox = document.getElementById('identifyResultBox');
@@ -2201,7 +2204,10 @@
 
         function closeVoiceProfilesModal() {
             const modal = document.getElementById('voiceProfilesModal');
-            if (modal) modal.classList.remove('open');
+            if (modal) {
+                modal.style.display = 'none';
+                modal.classList.remove('open');
+            }
         }
 
         async function loadVoiceProfilesList() {

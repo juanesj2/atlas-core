@@ -157,9 +157,11 @@ export const handleSatelliteConnection = (ws, req) => {
                 // Si la herramienta register_voice_profile fue invocada por la IA:
                 const hasVoiceEnrollment = response.toolCall && response.toolCall.some(t => t.action === 'register_voice_profile');
                 if (hasVoiceEnrollment && ws.readyState === ws.OPEN) {
+                    const targetUser = username !== 'invitado' ? username : 'Juanes';
+                    console.log(`[Satellite] 🎙️ Disparando evento TRIGGER_VOICE_ENROLLMENT para: ${targetUser}`);
                     ws.send(JSON.stringify({ 
                         event: 'TRIGGER_VOICE_ENROLLMENT', 
-                        username: username !== 'invitado' ? username : 'Juanes' 
+                        username: targetUser 
                     }));
                 }
 
@@ -223,10 +225,16 @@ async function sendVoiceResponse(ws, text, voicePreference = 'male') {
             
             // Enviar texto, estado HABLANDO y audio binario sincronizados exactamente al mismo tiempo
             if (ws.readyState === ws.OPEN) {
-                sendSatelliteState(ws, 'SPEAKING', 'waveform');
-                ws.send(JSON.stringify({ type: 'text_response', text: text }));
-                ws.send(audioBuffer, { binary: true });
-                console.log(`[Satellite] 🔊 Audio y texto sincronizados enviados (${audioBuffer.length} bytes)`);
+                if (audioBuffer.length > 0) {
+                    sendSatelliteState(ws, 'SPEAKING', 'waveform');
+                    ws.send(JSON.stringify({ type: 'text_response', text: text }));
+                    ws.send(audioBuffer, { binary: true });
+                    console.log(`[Satellite] 🔊 Audio y texto sincronizados enviados (${audioBuffer.length} bytes)`);
+                } else {
+                    console.warn('[TTS] ⚠️ Audio vacío de Edge TTS, enviando solo respuesta de texto.');
+                    sendSatelliteState(ws, 'IDLE', 'sleeping');
+                    ws.send(JSON.stringify({ type: 'text_response', text: text }));
+                }
                 
                 // MODO CONVERSACIÓN CONTINUA: Mantenemos el micro abierto (OPEN_MIC) para que el usuario
                 // pueda continuar hablando de forma natural sin tener que repetir "Atlas" en cada frase,
