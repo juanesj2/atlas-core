@@ -182,8 +182,16 @@ async function sendVoiceResponse(ws, text, voicePreference = 'male') {
             activeVoiceModel = voiceModel;
         }
 
-        // Escapar caracteres XML para evitar que rompan el SSML interno de Edge TTS
-        const safeText = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        // Sanitizar el texto para el sintetizador de voz (TTS):
+        // 1. Escapar caracteres XML para evitar que rompan el SSML interno de Edge TTS
+        // 2. Reemplazar "Atlas" por "tu asistente" / "este sistema" en el audio para que el altavoz
+        //    NUNCA pronuncie su propio wake word y evite auto-pausarse al escucharse a sí mismo.
+        const safeText = text
+            .replace(/\bsoy\s+atlas\b/gi, 'Soy tu asistente')
+            .replace(/\batlas\b/gi, 'tu asistente')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
 
         const { audioStream } = tts.toStream(safeText);
         

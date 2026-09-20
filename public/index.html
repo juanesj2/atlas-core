@@ -1404,6 +1404,12 @@
                         return;
                     }
 
+                    // Si lo que se escucha durante la locución coincide con lo que el propio Atlas está diciendo por el altavoz, descartar
+                    if (isSpokenTextEcho(currentText)) {
+                        console.log("[Barge-in] 🔇 Eco o auto-mención del altavoz descartado:", currentText);
+                        return;
+                    }
+
                     // Pausa con el nombre: si mientras habla escucha "Atlas" (o "espera", "pausa"):
                     if (hasWakeWord(currentText) || /\b(pausa|espera|esperate)\b/i.test(currentText)) {
                         console.log("[Barge-in] ⏸️ 'Atlas' escuchado durante la locución. Pausando y esperando:", currentText);
