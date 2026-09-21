@@ -746,7 +746,7 @@
             position: fixed;
             top: 15px;
             left: 50%;
-            transform: translateX(-50%);
+            transform: translate(-50%, -15px);
             background: rgba(15, 23, 42, 0.95);
             backdrop-filter: blur(25px);
             -webkit-backdrop-filter: blur(25px);
@@ -762,18 +762,25 @@
             justify-content: center;
             max-width: 92vw;
             box-sizing: border-box;
-            animation: fadeInDown 0.35s ease;
+            opacity: 0;
+            transition: opacity 0.5s ease, transform 0.5s ease;
+            cursor: pointer;
         }
-        @keyframes fadeInDown {
-            from { opacity: 0; transform: translate(-50%, -15px); }
-            to { opacity: 1; transform: translate(-50%, 0); }
+        .mic-prompt-banner.visible {
+            opacity: 1;
+            transform: translate(-50%, 0);
+        }
+        .mic-prompt-banner.hidden {
+            opacity: 0;
+            transform: translate(-50%, -15px);
         }
     </style>
 </head>
 <body>
     <!-- Banner de Permisos de Micrófono y Conexión Segura -->
-    <div id="micPromptBanner" class="mic-prompt-banner">
+    <div id="micPromptBanner" class="mic-prompt-banner" onclick="hideMicBanner()" title="Haz clic para cerrar">
         <div id="micPromptContent" style="display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap;"></div>
+        <button onclick="event.stopPropagation(); hideMicBanner();" style="background: none; border: none; color: #94a3b8; font-size: 16px; margin-left: 10px; cursor: pointer; line-height: 1;" title="Cerrar">&times;</button>
     </div>
     <!-- Modal Skills -->
     <div class="modal-overlay" id="skillsModal">
@@ -1316,21 +1323,52 @@
             `);
         }
 
-        function checkMicEnvironment() {
+        let micBannerDismissTimeout = null;
+
+        function showMicBanner(htmlContent, borderColor, autoDismissSeconds = 5) {
             const banner = document.getElementById('micPromptBanner');
             const content = document.getElementById('micPromptContent');
             if (!banner || !content) return;
 
+            clearTimeout(micBannerDismissTimeout);
+            content.innerHTML = htmlContent;
+            banner.style.borderColor = borderColor || 'rgba(0, 229, 255, 0.6)';
+            banner.style.display = 'flex';
+
+            // Forzar reflow para animación CSS fluida
+            void banner.offsetWidth;
+            banner.classList.remove('hidden');
+            banner.classList.add('visible');
+
+            if (autoDismissSeconds > 0) {
+                micBannerDismissTimeout = setTimeout(() => {
+                    hideMicBanner();
+                }, autoDismissSeconds * 1000);
+            }
+        }
+
+        function hideMicBanner() {
+            const banner = document.getElementById('micPromptBanner');
+            if (!banner) return;
+            clearTimeout(micBannerDismissTimeout);
+            banner.classList.remove('visible');
+            banner.classList.add('hidden');
+            setTimeout(() => {
+                if (banner.classList.contains('hidden')) {
+                    banner.style.display = 'none';
+                }
+            }, 500);
+        }
+
+        function checkMicEnvironment() {
             // 1. Si no es contexto seguro (HTTP en móvil)
             if (!window.isSecureContext) {
-                banner.style.display = 'flex';
-                banner.style.borderColor = 'rgba(239, 68, 68, 0.7)';
-                content.innerHTML = `
+                showMicBanner(`
                     <span>🔒 <b>Micrófono bloqueado:</b> En el móvil debes entrar por <b>HTTPS</b> para que el navegador te pida permiso.</span>
-                    <button onclick="window.location.href='https://' + window.location.hostname + ':8443'" class="glass-btn" style="padding: 6px 14px; font-size: 12px; background: rgba(0,229,255,0.25); border-color: #00e5ff; color: #00e5ff;">
+                    <button onclick="window.location.href='https://' + window.location.hostname + ':8443'" class="glass-btn" style="padding: 6px 14px; font-size: 12px; background: rgba(0,229,255,0.25); border-color: #00e5ff; color: #00e5ff; margin-left: 5px;">
                         Entrar por HTTPS (Puerto 8443) ➔
                     </button>
-                `;
+                `, 'rgba(239, 68, 68, 0.7)', 5);
                 return;
             }
 
@@ -1338,19 +1376,15 @@
             if (navigator.permissions && navigator.permissions.query) {
                 navigator.permissions.query({ name: 'microphone' }).then(status => {
                     if (status.state === 'prompt') {
-                        banner.style.display = 'flex';
-                        banner.style.borderColor = 'rgba(0, 229, 255, 0.6)';
-                        content.innerHTML = `
+                        showMicBanner(`
                             <span>🎙️ <b>Toca el núcleo de Atlas</b> para activar el micrófono y el comando de voz "Atlas".</span>
-                        `;
+                        `, 'rgba(0, 229, 255, 0.6)', 5);
                     } else if (status.state === 'denied') {
-                        banner.style.display = 'flex';
-                        banner.style.borderColor = 'rgba(239, 68, 68, 0.7)';
-                        content.innerHTML = `
+                        showMicBanner(`
                             <span>🔒 Micrófono bloqueado en este sitio. Toca el candado 🔒 en la barra de direcciones y selecciona "Permitir".</span>
-                        `;
+                        `, 'rgba(239, 68, 68, 0.7)', 5);
                     } else if (status.state === 'granted') {
-                        banner.style.display = 'none';
+                        hideMicBanner();
                     }
 
                     status.onchange = () => checkMicEnvironment();
@@ -1383,8 +1417,7 @@
                 try {
                     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
                     stream.getTracks().forEach(track => track.stop());
-                    const banner = document.getElementById('micPromptBanner');
-                    if (banner) banner.style.display = 'none';
+                    hideMicBanner();
                     return true;
                 } catch (err) {
                     console.warn("[Mic] Error al solicitar getUserMedia:", err);
