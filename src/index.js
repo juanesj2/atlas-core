@@ -64,7 +64,7 @@ app.post('/api/skills/toggle', async (req, res) => {
 
 // Endpoint Proactivo: Permite que sensores externos (HA) hagan hablar a Atlas
 import { broadcastVoiceMessage } from './socket/satellite.js';
-import { askAtlas } from './ai/qwen.js';
+import { askAtlas, preloadModel } from './ai/qwen.js';
 
 app.post('/api/trigger', async (req, res) => {
     const { event, context, username } = req.body || {};
@@ -299,6 +299,7 @@ server.listen(PORT, () => {
     console.log(`🌍 Web Simulator running on http://localhost:${PORT}`);
     console.log(`📡 WebSocket server running on ws://localhost:${PORT}`);
     console.log(`🎵 Spotify Login: http://localhost:${PORT}/spotify/login`);
+    preloadModel();
 });
 
 

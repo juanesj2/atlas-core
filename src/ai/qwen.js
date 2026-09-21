@@ -90,7 +90,8 @@ export const askAtlas = async (userPrompt, history = [], username = 'invitado') 
             const response = await ollama.chat({
                 model: MODEL,
                 messages: messages,
-                tools: atlasTools
+                tools: atlasTools,
+                keep_alive: -1
             });
 
             const msg = response.message;
@@ -170,5 +171,23 @@ export const askAtlas = async (userPrompt, history = [], username = 'invitado') 
     } catch (error) {
         console.error('[Atlas AI] ❌ Error en el bucle de inferencia:', error);
         return { text: 'Mis circuitos han fallado.', toolCall: null };
+    }
+};
+
+/**
+ * Precarga el modelo LLM en la VRAM de la GPU para que las respuestas sean instantáneas (<800ms)
+ */
+export const preloadModel = async () => {
+    if (MOCK_AI) return;
+    try {
+        console.log(`[Atlas AI] 🚀 Precalentando modelo ${MODEL} en VRAM de la GPU...`);
+        await ollama.chat({
+            model: MODEL,
+            messages: [{ role: 'user', content: 'hola' }],
+            keep_alive: -1
+        });
+        console.log(`[Atlas AI] ⚡ Modelo ${MODEL} listo en VRAM permanente.`);
+    } catch (e) {
+        console.warn(`[Atlas AI] Aviso precargando modelo:`, e.message);
     }
 };
