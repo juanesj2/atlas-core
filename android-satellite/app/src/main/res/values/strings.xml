@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">Cronos</string>
+    <string name="service_notification_title">Cronos Activo</string>
+    <string name="service_notification_text">Escuchando órdenes de voz en segundo plano...</string>
+</resources>

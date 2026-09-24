@@ -5,7 +5,7 @@ import { getEmbedding, cosineSimilarity } from './embeddings.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const MEMORY_FILE = path.join(__dirname, '../../atlas_memory_vectors.json');
+const MEMORY_FILE = path.join(__dirname, '../../Cronos_memory_vectors.json');
 
 /**
  * {
@@ -81,16 +81,16 @@ export const getMemoryForPrompt = async (username, prompt) => {
     const cleanUser = username ? username.toLowerCase().trim() : 'invitado';
     
     // Si es invitado, no buscamos en memoria personal
-    if (cleanUser === 'invitado') return "- Datos sobre el usuario: NINGUNO (Invitado).";
+    if (cleanUser === 'invitado') return "";
 
     const mem = readMemoryFile();
     const userVectors = mem.vectors.filter(v => v.user === cleanUser || v.user === 'global');
 
-    if (userVectors.length === 0) return `- Datos sobre ${cleanUser}: NINGUNO.`;
+    if (userVectors.length === 0) return "";
 
     // 1. Convertir la pregunta del usuario en vector
     const promptVector = await getEmbedding(prompt);
-    if (!promptVector) return "- Error de memoria vectorial.";
+    if (!promptVector) return "";
 
     // 2. Calcular distancias
     const results = userVectors.map(v => {
@@ -107,7 +107,7 @@ export const getMemoryForPrompt = async (username, prompt) => {
     const topResults = results.filter(r => r.score > 0.4).slice(0, 3);
 
     if (topResults.length === 0) {
-        return `- No hay recuerdos específicos de ${cleanUser} relevantes para esta conversación.`;
+        return "";
     }
 
     let text = `MEMORIA A LARGO PLAZO RECUPERADA PARA '${cleanUser}' (Contexto RAG):\n`;
@@ -116,4 +116,30 @@ export const getMemoryForPrompt = async (username, prompt) => {
     });
 
     return text;
+};
+
+/**
+ * Devuelve todos los recuerdos vectoriales (sin los vectores para ser liviano)
+ */
+export const getAllMemories = () => {
+    const mem = readMemoryFile();
+    return (mem.vectors || []).map(v => ({
+        id: v.id,
+        user: v.user,
+        text: v.text
+    }));
+};
+
+/**
+ * Elimina un recuerdo vectorial por id
+ */
+export const deleteMemory = (id) => {
+    const mem = readMemoryFile();
+    const initialLen = mem.vectors.length;
+    mem.vectors = mem.vectors.filter(v => v.id !== id);
+    if (mem.vectors.length !== initialLen) {
+        writeMemoryFile(mem);
+        return true;
+    }
+    return false;
 };

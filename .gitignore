@@ -4,3 +4,8 @@ spotify_tokens.json
 askpass.bat
 *.log
 ssl/*.pem
+server_logs*.txt
+pm2_logs.txt
+android-satellite/.gradle/
+android-satellite/app/build/
+android-satellite/local.properties

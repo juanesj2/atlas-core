@@ -4,9 +4,9 @@ console.log('Iniciando simulador de Satélite (ESP32)...');
 const ws = new WebSocket('ws://localhost:8080');
 
 ws.on('open', () => {
-    console.log('✅ Conectado exitosamente al Gateway ATLAS');
+    console.log('✅ Conectado exitosamente al Gateway Cronos');
     
-    // 1. Simulamos que el usuario dice "Hey Atlas" (Wake Word detectado en el ESP32)
+    // 1. Simulamos que el usuario dice "Hey Cronos" (Wake Word detectado en el ESP32)
     setTimeout(() => {
         console.log('🗣️ [Satélite] Usuario dijo la palabra de activación. Enviando WAKE_WORD_DETECTED...');
         ws.send(JSON.stringify({ event: 'WAKE_WORD_DETECTED' }));

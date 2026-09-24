@@ -7,6 +7,7 @@ import { handleSatelliteConnection } from './socket/satellite.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
+import { spawn } from 'child_process';
 
 dotenv.config();
 
@@ -17,12 +18,22 @@ const PORT = process.env.PORT || 8080;
 const MOCK_AI = process.env.MOCK_AI === 'true';
 
 const app = express();
-app.use(express.static(path.join(__dirname, '../public')));
+app.use(express.static(path.join(__dirname, '../public'), {
+    maxAge: '1d',
+    etag: true
+}));
 app.use(express.json({ limit: '50mb' })); // Permitir payloads grandes para audio Base64
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // === API GESTOR DE SKILLS ===
 import { loadSkills } from './ai/tools.js';
+
+// === API DE AUTOAPRENDIZAJE Y MEMORIA ===
+import { getInteractionStats, getLearnerState } from './ai/interactionLogger.js';
+import { runLearningCycle } from './ai/autoLearner.js';
+import { getLessons, deleteLesson, clearAllLessons } from './ai/selfCorrection.js';
+import { getCuriosityQueue, getExploredTopics, runCuriosityExploration } from './ai/curiosityEngine.js';
+import { getAllMemories, deleteMemory } from './ai/memoryManager.js';
 
 app.get('/api/skills', (req, res) => {
     const skillsDir = path.join(__dirname, 'skills');
@@ -62,9 +73,9 @@ app.post('/api/skills/toggle', async (req, res) => {
     }
 });
 
-// Endpoint Proactivo: Permite que sensores externos (HA) hagan hablar a Atlas
+// Endpoint Proactivo: Permite que sensores externos (HA) hagan hablar a Cronos
 import { broadcastVoiceMessage } from './socket/satellite.js';
-import { askAtlas, preloadModel } from './ai/qwen.js';
+import { askCronos, preloadModel } from './ai/qwen.js';
 
 app.post('/api/trigger', async (req, res) => {
     const { event, context, username } = req.body || {};
@@ -78,7 +89,7 @@ app.post('/api/trigger', async (req, res) => {
     Genera un comentario natural de 1 o 2 frases hacia el usuario informando de esto, o dándole los buenos días si aplica. No expliques que eres una IA, simplemente díselo de forma natural.`;
     
     try {
-        const response = await askAtlas(internalPrompt, [], username || 'Juanes');
+        const response = await askCronos(internalPrompt, [], username || 'Juanes');
         
         // Transmitir a todos los altavoces de la casa
         await broadcastVoiceMessage(response.text, 'female');
@@ -132,7 +143,7 @@ loadRoutines();
 const server = createServer(app);
 
 console.log('='.repeat(40));
-console.log('🚀 ATLAS Gateway Initializing...');
+console.log('🚀 Cronos Gateway Initializing...');
 console.log(`🤖 MOCK_AI Mode: ${MOCK_AI ? '🟢 ACTIVE' : '🔴 INACTIVE'}`);
 console.log('='.repeat(40));
 
@@ -241,26 +252,127 @@ app.post('/api/voice-profiles/identify', async (req, res) => {
     }
 });
 
-// === FLUJO DE AUTENTICACIÓN DE SPOTIFY ===
-// Para que Atlas pueda controlar tu música, necesita permisos tuyos
-app.get('/spotify/login', (req, res) => {
-    const scope = 'user-read-playback-state user-modify-playback-state';
-    const client_id = process.env.SPOTIFY_CLIENT_ID;
-    const redirect_uri = `http://localhost:${PORT}/spotify/callback`;
-    
-    if (!client_id) return res.send('Falta SPOTIFY_CLIENT_ID en el .env');
+// === ENDPOINTS DE AUTOAPRENDIZAJE Y MEMORIA ===
+app.get('/api/learning/stats', (req, res) => {
+    try {
+        const stats = getInteractionStats();
+        const learnerState = getLearnerState();
+        const lessons = getLessons();
+        const curiosityQueue = getCuriosityQueue();
+        const exploredTopics = getExploredTopics();
+        const memories = getAllMemories();
 
-    const authUrl = `https://accounts.spotify.com/authorize?response_type=code&client_id=${client_id}&scope=${encodeURIComponent(scope)}&redirect_uri=${encodeURIComponent(redirect_uri)}`;
+        res.json({
+            success: true,
+            stats,
+            learnerState,
+            lessons,
+            curiosityQueue,
+            exploredTopics,
+            memories
+        });
+    } catch (e) {
+        console.error('[API Learning] Error obteniendo estadísticas:', e);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.post('/api/learning/run-cycle', async (req, res) => {
+    try {
+        console.log('[API Learning] 🚀 Disparando ciclo de autoaprendizaje manual...');
+        const result = await runLearningCycle();
+        res.json({ success: true, result });
+    } catch (e) {
+        console.error('[API Learning] Error ejecutando ciclo:', e);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.post('/api/learning/explore', async (req, res) => {
+    try {
+        const count = req.body?.count || 1;
+        console.log(`[API Learning] 🌐 Disparando exploración de curiosidad manual (${count} temas)...`);
+        const explored = await runCuriosityExploration(count);
+        res.json({ success: true, count: explored.length, explored });
+    } catch (e) {
+        console.error('[API Learning] Error explorando:', e);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.delete('/api/learning/lessons/:id', (req, res) => {
+    try {
+        const ok = deleteLesson(req.params.id);
+        res.json({ success: ok });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.delete('/api/learning/memories/:id', (req, res) => {
+    try {
+        const ok = deleteMemory(req.params.id);
+        res.json({ success: ok });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// === FLUJO DE AUTENTICACIÓN DE SPOTIFY ===
+// Para que Cronos pueda controlar tu música, necesita permisos tuyos
+function getSpotifyRedirectUri(req) {
+    if (req && req.query && req.query.redirect_uri) return req.query.redirect_uri;
+    if (process.env.SPOTIFY_REDIRECT_URI) return process.env.SPOTIFY_REDIRECT_URI;
+
+    // Spotify rechaza http:// con direcciones IP (da "redirect_uri: Insecure").
+    // Solo permite http:// si el host es "localhost" o "127.0.0.1".
+    // Para cualquier otra IP (ej: 192.168.1.152), Spotify EXIGE estrictamente https://.
+    const hostHeader = (req && req.get('host')) || '';
+    const isLocalhost = hostHeader.startsWith('localhost') || hostHeader.startsWith('127.0.0.1');
+
+    if (isLocalhost) {
+        return `http://localhost:${PORT}/spotify/callback`;
+    }
+
+    const hostname = hostHeader.split(':')[0] || '192.168.1.152';
+    const httpsPort = process.env.HTTPS_PORT || 8443;
+    return `https://${hostname}:${httpsPort}/spotify/callback`;
+}
+
+app.get('/spotify/login', (req, res) => {
+    const scope = 'user-read-playback-state user-modify-playback-state user-read-currently-playing playlist-read-private playlist-read-collaborative';
+    const client_id = process.env.SPOTIFY_CLIENT_ID;
+    
+    if (!client_id) {
+        return res.status(400).send('Falta SPOTIFY_CLIENT_ID en el archivo .env');
+    }
+
+    const redirect_uri = getSpotifyRedirectUri(req);
+    const stateObj = { redirect_uri };
+    const state = Buffer.from(JSON.stringify(stateObj)).toString('base64');
+
+    const authUrl = `https://accounts.spotify.com/authorize?response_type=code&client_id=${client_id}&scope=${encodeURIComponent(scope)}&redirect_uri=${encodeURIComponent(redirect_uri)}&state=${encodeURIComponent(state)}&show_dialog=true`;
+    console.log(`[Spotify] 🔗 Redirigiendo a autenticación de Spotify con URI: ${redirect_uri}`);
     res.redirect(authUrl);
 });
 
 app.get('/spotify/callback', async (req, res) => {
     const code = req.query.code || null;
+    const errorParam = req.query.error || null;
     const client_id = process.env.SPOTIFY_CLIENT_ID;
     const client_secret = process.env.SPOTIFY_CLIENT_SECRET;
-    const redirect_uri = `http://localhost:${PORT}/spotify/callback`;
 
-    if (!code) return res.send('Error: No se recibió código de Spotify');
+    if (errorParam || !code) {
+        return res.status(400).send(`<h1>Error en la autorización de Spotify</h1><p>${errorParam || 'No se recibió código de autorización'}</p>`);
+    }
+
+    let redirect_uri = getSpotifyRedirectUri(req);
+    if (req.query.state) {
+        try {
+            const decoded = JSON.parse(Buffer.from(req.query.state, 'base64').toString('utf8'));
+            if (decoded.redirect_uri) redirect_uri = decoded.redirect_uri;
+        } catch (e) {}
+    }
 
     try {
         const authOptions = {
@@ -281,16 +393,62 @@ app.get('/spotify/callback', async (req, res) => {
 
         if (data.access_token) {
             // Guardamos los tokens en un archivo local
-            const fs = await import('fs');
-            const path = await import('path');
             const tokenPath = path.join(process.cwd(), 'spotify_tokens.json');
             fs.writeFileSync(tokenPath, JSON.stringify(data, null, 2));
-            res.send('<h1>¡Éxito!</h1><p>Spotify autorizado correctamente. Ya puedes cerrar esta ventana.</p>');
+            console.log('[Spotify] ✅ Tokens guardados exitosamente en spotify_tokens.json');
+
+            // Actualizar skill de Spotify en memoria
+            try {
+                const spotifySkill = await import('./skills/spotify.js');
+                if (spotifySkill.reloadSpotifyTokens) {
+                    spotifySkill.reloadSpotifyTokens();
+                }
+            } catch (e) {}
+
+            res.send(`
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <meta charset="utf-8">
+                    <title>Spotify Vinculado - Cronos</title>
+                    <style>
+                        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0b0f19; color: #f8fafc; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+                        .card { background: rgba(30, 41, 59, 0.7); border: 1px solid rgba(34, 197, 94, 0.3); box-shadow: 0 20px 40px rgba(0,0,0,0.6); padding: 40px; border-radius: 20px; text-align: center; max-width: 420px; }
+                        h1 { color: #22c55e; margin: 0 0 15px; font-size: 26px; }
+                        p { color: #94a3b8; font-size: 15px; line-height: 1.5; margin: 0 0 20px; }
+                        .btn { display: inline-block; background: #22c55e; color: #000; font-weight: 700; text-decoration: none; padding: 12px 24px; border-radius: 30px; font-size: 14px; }
+                    </style>
+                </head>
+                <body>
+                    <div class="card">
+                        <div style="font-size: 48px; margin-bottom: 15px;">🎵</div>
+                        <h1>¡Spotify Vinculado con Éxito!</h1>
+                        <p>Cronos ya tiene permisos para reproducir música, playlists y controlar tu reproducción en Spotify.</p>
+                        <a href="/" class="btn">Volver a Cronos</a>
+                    </div>
+                </body>
+                </html>
+            `);
         } else {
-            res.send('Error en la autorización: ' + JSON.stringify(data));
+            console.error('[Spotify] Error de autorización:', data);
+            res.status(400).send(`<h1>Error en la autorización</h1><pre>${JSON.stringify(data, null, 2)}</pre>`);
         }
     } catch (error) {
-        res.send('Error conectando con Spotify: ' + error.message);
+        console.error('[Spotify] Error en callback:', error);
+        res.status(500).send('Error conectando con Spotify: ' + error.message);
+    }
+});
+
+app.get('/api/spotify/status', async (req, res) => {
+    try {
+        const spotifySkill = await import('./skills/spotify.js');
+        if (spotifySkill.getSpotifyStatus) {
+            const status = await spotifySkill.getSpotifyStatus();
+            return res.json(status);
+        }
+        res.json({ connected: false, message: 'Módulo Spotify no disponible' });
+    } catch (e) {
+        res.status(500).json({ connected: false, error: e.message });
     }
 });
 
@@ -300,6 +458,14 @@ server.listen(PORT, () => {
     console.log(`📡 WebSocket server running on ws://localhost:${PORT}`);
     console.log(`🎵 Spotify Login: http://localhost:${PORT}/spotify/login`);
     preloadModel();
+
+    // Keep-alive heartbeat: ping suave cada 10s al router para evitar que el WiFi USB se duerma
+    setInterval(() => {
+        try {
+            const p = spawn('ping', ['-c', '1', '-W', '1', '192.168.1.1']);
+            p.on('error', () => {});
+        } catch (e) {}
+    }, 10000);
 });
 
 

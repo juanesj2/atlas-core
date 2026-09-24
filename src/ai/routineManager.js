@@ -2,12 +2,14 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import cron from 'node-cron';
-import { askAtlas } from './qwen.js';
+import { askCronos } from './qwen.js';
 import { broadcastVoiceMessage } from '../socket/satellite.js';
+import { runLearningCycle } from './autoLearner.js';
+import { runCuriosityExploration } from './curiosityEngine.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const ROUTINES_FILE = path.join(__dirname, '../../atlas_routines.json');
+const ROUTINES_FILE = path.join(__dirname, '../../Cronos_routines.json');
 
 let routines = [];
 let activeJobs = {}; // Guarda la referencia a las tareas de node-cron por ID
@@ -35,6 +37,18 @@ export const loadRoutines = () => {
             scheduleRoutine(routine);
         }
     });
+
+    // Programar el ciclo nocturno de aprendizaje profundo y curiosidad (todos los días a las 04:00 AM)
+    activeJobs['Cronos_nightly_learning'] = cron.schedule('0 4 * * *', async () => {
+        console.log('[Routines] 🌌 Iniciando ciclo nocturno de aprendizaje y exploración...');
+        try {
+            await runLearningCycle();
+            await runCuriosityExploration(2);
+        } catch (err) {
+            console.error('[Routines] Error en ciclo nocturno:', err.message);
+        }
+    });
+    console.log('[Routines] 🌙 Ciclo nocturno de autoaprendizaje programado (04:00 AM).');
     
     console.log(`[Routines] ${routines.length} rutinas cargadas.`);
 };
@@ -55,7 +69,7 @@ const scheduleRoutine = (routine) => {
         Tras ejecutar las acciones necesarias, genera un comentario natural y proactivo hacia el usuario. No expliques que eres una IA.`;
         
         try {
-            const response = await askAtlas(internalPrompt, [], routine.username || 'Juanes');
+            const response = await askCronos(internalPrompt, [], routine.username || 'Juanes');
             await broadcastVoiceMessage(response.text, 'female');
         } catch (e) {
             console.error('[Routines] Error ejecutando rutina:', e);

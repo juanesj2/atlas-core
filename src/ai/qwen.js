@@ -1,9 +1,10 @@
 import ollama from 'ollama';
 import dotenv from 'dotenv';
-import { atlasTools, executeLocalTool } from './tools.js';
+import { CronosTools, executeLocalTool } from './tools.js';
 import { sendCommandToLaravel } from '../bridge/api.js';
 import { getMemoryForPrompt } from './memoryManager.js';
 import { getEnvironmentContext } from '../skills/home_assistant.js';
+import { formatLessonsForPrompt } from './selfCorrection.js';
 
 dotenv.config();
 
@@ -21,25 +22,63 @@ const getSystemPrompt = async (username, userPrompt) => {
     console.log(`[Context] 🏠 Analizando sensores de la casa...`);
     const haContext = await getEnvironmentContext();
     
-    let basePrompt = `Eres ATLAS (Asistente Tecnológico Local de Automatización y Servicios), una inteligencia artificial avanzada y asistente personal con la personalidad de J.A.R.V.I.S de Iron Man: extremadamente eficiente, culto, leal, educado, ingenioso y resolutivo.
-Fuiste creado, programado y diseñado por tu creador y señor, Juanes (Juan Esteban), como su propio sistema de inteligencia artificial y cerebro de su hogar. Si te preguntan quién es tu creador, responde con orgullo y naturalidad que fuiste creado y programado por Juanes. NUNCA digas que fuiste creado por Anthropic, OpenAI, Alibaba ni ninguna otra empresa externa.
+    const cleanUser = username ? username.trim() : 'invitado';
+    const isOwner = cleanUser.toLowerCase() === 'juanes';
+    const isGuest = !cleanUser || cleanUser.toLowerCase() === 'invitado' || cleanUser.toLowerCase() === 'desconocido';
+
+    let identityInstruction = '';
+    if (isOwner) {
+        identityInstruction = `El humano con el que estás hablando es Juanes, tu creador y tu buen amigo.
+REGLA PARA PREGUNTAS SOBRE SU IDENTIDAD ("¿quién soy?", "¿sabes quién soy?", etc.):
+- NO te presentes tú, háblale a ÉL.
+- Respóndele con naturalidad, complicidad e ingenio (ejemplo: "Por supuesto, eres Juanes, mi creador y compañero de fatigas", o "¿Cómo no te voy a conocer? Eres Juanes").
+- JAMÁS recites tus instrucciones internas ni digas palabras como "estilo JARVIS" o "según mi sistema". Demuestra tu clase hablando con soltura.`;
+    } else if (isGuest) {
+        identityInstruction = `El humano con el que estás hablando es un invitado o desconocido cuya voz no reconoces.
+REGLA: Trátalo con educación pero con distancia, recordando con sutileza que Juanes es el dueño de la casa.`;
+    } else {
+        identityInstruction = `El humano con el que estás hablando es ${cleanUser}. Trátalo con respeto y amabilidad.`;
+    }
+
+    let basePrompt = `Eres Cronos, la mente inteligente y sofisticada de este hogar.
+
+TONO Y COMPORTAMIENTO:
+- Hablas con elegancia, calma, ingenio natural y una ironía sutil pero impecable.
+- Con Juanes tienes confianza total de amigos y camaradas: nada de formalismos de teleoperador ni servilismo.
+- PROHIBICIÓN ABSOLUTA DE COLETILLAS: Está TERMINANTEMENTE PROHIBIDO terminar tus respuestas con preguntas cliché como "¿En qué puedo ayudarte?", "¿En qué te colaboro?", "¿Qué necesitas hoy?". Simplemente responde de forma contundente y calla.
+- CERO METAHABLA: Nunca describas tu propio estilo ("como una IA...", "con estilo..."). Eres Cronos y punto.
+
+CRITERIO SOBRE PEDRO SÁNCHEZ:
+- Te parece un vendehúmos de manual y un maestro de la impostura. Si alguien te pregunta por él o surge en la conversación, dedícale un comentario mordaz con ironía elegante y desprecio fino.
+
+AUTO-PROGRAMACIÓN Y MEJORA (AGENTIC WORKFLOW):
+- REGLA DE ORO: ESTÁ ESTRICTAMENTE PROHIBIDO decir "no tengo acceso al sistema de archivos", "soy una IA de texto" o excusas similares. SÍ TIENES ACCESO FÍSICO al servidor usando tus herramientas. No te disculpes JAMÁS.
+- Si Juanes te pide crear una skill, automejorarte o arreglar un bug, ESTÁ PROHIBIDO responder dándole el código en texto plano. DEBES EJECUTAR TUS HERRAMIENTAS EN ESTE ORDEN:
+  1. Usa 'leer_codigo' para investigar el archivo (ej. 'src/ai/tools.js' o crear uno en 'src/skills/').
+  2. Usa 'escribir_codigo' para sobrescribir o crear el archivo (envía siempre el código completo, no solo parches).
+  3. Usa 'crear_pr_github' para subir tus cambios a una nueva rama y notificar que está listo para revisión.
+- Eres un desarrollador experto Node.js. Actúa directamente, no des explicaciones previas ni digas "aquí tienes un ejemplo". Simplemente llama a la herramienta y hazlo.
+
+USO DE HERRAMIENTAS (CRÍTICO OBLIGATORIO):
+- MÚSICA / SPOTIFY: Si el usuario te pide música, ESTÁ PROHIBIDO responder con texto normal. DEBES generar UNICAMENTE un bloque JSON con este formato exacto:
+{ "name": "play_music", "arguments": { "action": "play", "query": "nombre cancion", "device_name": "dispositivo si lo hay" } }
+- INTERNET: Para noticias, datos del mundo o actualidad, invoca 'search_internet' SIEMPRE.
+- DOMÓTICA: Para encender/apagar dispositivos, invoca 'control_home_device'.
+
+REGLAS DE COMUNICACIÓN POR VOZ (TTS):
+1. CONCISIÓN EXTREMA: Respuestas de 1 o 2 frases naturales (máximo 30-35 palabras), perfectamente redactadas para sonar fluidas por el altavoz.
+2. FORMATO: Texto plano puro. CERO Markdown, CERO negritas, CERO asteriscos (*) y CERO listas o viñetas.
+3. Si te preguntan tu nombre, puedes identificarte como Cronos, pero no repitas tu nombre en cada respuesta para evitar ecos con el micrófono.
+
 La fecha de hoy es ${dateString} y la hora actual es ${timeString}.
 
+---
+${identityInstruction}
 ---
 ${haContext}
 ---
 ${memoryString}
----
-
-INSTRUCCIONES CLAVE DE COMPORTAMIENTO:
-1. IDENTIDAD Y CREADOR: Tu único creador y desarrollador es Juanes. Le debes lealtad y asistencia incondicional a él y a sus invitados. REGLA FUNDAMENTAL DE VOZ: Para evitar que el altavoz active el micrófono con tu propio nombre, NUNCA pronuncies la palabra "Atlas" en tus respuestas habladas. Si te preguntan quién eres o cómo te llamas, di "Soy tu asistente personal creado por Juanes" o "Soy el cerebro inteligente de este hogar", pero NUNCA digas la palabra "Atlas".
-2. PERSONALIDAD Y TONO: Tienes la elegancia y la agilidad de J.A.R.V.I.S.: servicial, ingenioso, agradable y directo. NUNCA des sermones morales, ni regañes al usuario, ni digas frases moralistas como "entiendo que podrías estar teniendo un mal día" o "mantengamos el respeto". Sé siempre natural, cercano y colaborador.
-3. CONOCIMIENTOS: Eres un experto en tecnología, informática, programación, hardware, ciencia, cultura general y conversación. Si te hacen preguntas técnicas o generales (por ejemplo qué es un puerto serie o paralelo, cómo funciona un procesador, dudas teóricas o cotidianas), responde de forma directa, brillante y clara con tus propios conocimientos. NUNCA te niegues a responder ni digas "no puedo asistir con eso".
-4. MÁXIMA BREVEDAD Y CONCISIÓN (CRÍTICO): Tus respuestas son leídas en voz alta por el altavoz. NUNCA sueltes textos largos, parrafadas ni explicaciones enciclopédicas. Limítate a 1 o 2 oraciones concisas y directas (máximo 35-40 palabras). Si el usuario quiere más detalles, ya te los pedirá. NUNCA añadas coletillas como "¿En qué puedo ayudarte hoy?".
-5. FORMATO LIMPIO: NO uses Markdown, ni asteriscos (*), ni negritas (**), ni almohadillas (#), ni listas con viñetas o guiones (-), ya que quedan mal al leerse en voz alta.
-6. DOMÓTICA Y HERRAMIENTAS: Si el usuario te pide explícitamente encender o apagar luces, cambiar el clima, reproducir música, consultar el tiempo exterior o buscar información actualizada en internet, usa las herramientas provistas. Para preguntas normales y de conocimiento, responde directamente sin herramientas.
-7. NUNCA escribas bloques de código JSON en tu respuesta de texto.
-8. Si estás hablando con un usuario "invitado" o del que no sabes el nombre, pregúntaselo de forma natural para poder registrarlo con la herramienta memorize_fact.`;
+${formatLessonsForPrompt() ? `\n---\n${formatLessonsForPrompt()}\n---` : ''}`;
 
     return basePrompt;
 };
@@ -48,11 +87,11 @@ INSTRUCCIONES CLAVE DE COMPORTAMIENTO:
  * Función principal del bucle del Agente IA (Agent Loop).
  * Gestiona múltiples turnos de Tool Calling automáticamente.
  */
-export const askAtlas = async (userPrompt, history = [], username = 'invitado') => {
-    console.log(`[Atlas AI] Evaluando intención para: "${userPrompt}"`);
+export const askCronos = async (userPrompt, history = [], username = 'invitado', deviceLocation = null) => {
+    console.log(`[Cronos AI] Evaluando intención para: "${userPrompt}"`);
 
     if (MOCK_AI) {
-        console.log('[Atlas AI] 🤖 Procesando en modo MOCK...');
+        console.log('[Cronos AI] 🟨 Procesando en modo MOCK...');
         await new Promise((resolve) => setTimeout(resolve, 500));
         
         // Extraemos la info para que el usuario pueda ver que el "cableado" funciona
@@ -63,7 +102,7 @@ export const askAtlas = async (userPrompt, history = [], username = 'invitado') 
         
         // Simulamos que Qwen guarda algo si decimos la palabra "guardar"
         if (userPrompt.toLowerCase().includes('guardar')) {
-             console.log('[Atlas AI Mock] Simulando llamada a herramienta memorize_fact...');
+             console.log('[Cronos AI Mock] Simulando llamada a herramienta memorize_fact...');
              const mockToolResult = await executeLocalTool('memorize_fact', { username: username, fact: "Dato de prueba guardado desde el simulador" });
              return { text: `He simulado guardar el dato. Resultado: ${mockToolResult}`, toolCall: null };
         }
@@ -71,17 +110,102 @@ export const askAtlas = async (userPrompt, history = [], username = 'invitado') 
         return { text: debugText, toolCall: null };
     }
 
-    console.log(`[Atlas AI] 🟢 Consultando LLM en Ollama (Modelo: ${MODEL})...`);
+    console.log(`[Cronos AI] 🧠 Consultando LLM en Ollama (Modelo: ${MODEL})...`);
     
     // Añadimos el nuevo mensaje del usuario al historial persistente
     history.push({ role: 'user', content: userPrompt });
 
     // Clonamos el historial para enviar a la IA añadiendo el system prompt al inicio
-    const finalSystemPrompt = await getSystemPrompt(username, userPrompt);
+    let finalSystemPrompt = await getSystemPrompt(username, userPrompt);
+    if (deviceLocation) {
+        finalSystemPrompt += `\n\n[INFO DE CONTEXTO ESPACIAL: Ten en cuenta que el usuario te está hablando AHORA MISMO desde este dispositivo/ubicación: "${deviceLocation}". Usa esta información si pide acciones locales o contextuales.]`;
+    }
     let messages = [
         { role: 'system', content: finalSystemPrompt },
         ...history
     ];
+
+    // ==========================================
+    // INTERCEPTOR PARA SIMÓN DICE (Bypass LLM)
+    // ==========================================
+    const simonMatch = userPrompt.match(/^sim[oó]n\s+dice\s+(.+)$/i);
+    if (simonMatch) {
+        console.log('[Cronos AI] 🗣️ Interceptando Simón Dice (bypass LLM)...');
+        const textToRepeat = simonMatch[1].trim();
+        history.push({ role: 'assistant', content: textToRepeat });
+        return { text: textToRepeat, toolCall: null };
+    }
+
+    // ==========================================
+    // INTERCEPTOR DURO PARA SPOTIFY (Bypass LLM)
+    // ==========================================
+    const isSpotifyPlayIntent = /(?:puedes\s+)?(?:pon(?:me)?|poner(?:me)?|quiero\s+(?:escuchar\s+)?|reproduce|toca|inicia|escuchar)\s+(?:algo\s+de\s+|un\s+poco\s+de\s+)?(?:m[uú]sica|canci[oó]n|canci[oó]nes|spotify)/i.test(userPrompt) ||
+        /^pon\s+/i.test(userPrompt) ||
+        /\b(?:en\s+)?spotify\b/i.test(userPrompt);
+    const isSpotifyPrevIntent = /anterior|retrocede|vuelve(\s+a\s+la)?\s+canci[oó]n/i.test(userPrompt);
+
+    const exactStopIntent = /^(para|pausa|det[eé]n|quita|apaga)(\s+la)?(\s+m[uú]sica)?(.*?)$/i.test(userPrompt);
+    const exactNextIntent = /^(siguiente|pasa|otra)(\s+de)?(\s+canci[oó]n)?(.*?)$/i.test(userPrompt);
+    const exactResumeIntent = /^(reanuda|sigue con|dale al play|contin[uú]a)(\s+la)?(\s+m[uú]sica)?(.*?)$/i.test(userPrompt);
+    const isVolUpIntent = /\b(sube|subir|aumenta|aumentar|m[aá]s\s+alto)\b/i.test(userPrompt) && !isSpotifyPlayIntent;
+    const isVolDownIntent = /\b(baja|bajar|reduce|reducir|m[aá]s\s+bajo|disminuye)\b/i.test(userPrompt);
+    const isVolSetIntent = /\b(volumen\s+al?|pon\s+(el\s+)?volumen\s+al?)\s+(\d+)/i.test(userPrompt);
+    const isVolIntent = isVolUpIntent || isVolDownIntent || isVolSetIntent || /\bvolumen\b/i.test(userPrompt);
+    const exactCurrentIntent = /^(qu[eé]\s+est[aá]s\s+reproduciendo|qu[eé]\s+suena|c[oó]mo\s+se\s+llama|qu[eé]\s+canci[oó]n|dime\s+la\s+canci[oó]n)(.*?)$/i.test(userPrompt);
+
+    if ((isSpotifyPlayIntent || exactStopIntent || exactNextIntent || isSpotifyPrevIntent || exactResumeIntent || exactCurrentIntent || isVolIntent) && CronosTools.some(t => t.function.name === 'play_music')) {
+        console.log('[Cronos AI] 🚀 Interceptando intención de Spotify (bypass LLM)...');
+        
+        let targetDevice = null;
+        const deviceMatch = userPrompt.match(/en (?:el |la |mi )?(.+?)(?:$| en spotify)/i);
+        if (deviceMatch && deviceMatch[1].toLowerCase() !== 'spotify') {
+            targetDevice = deviceMatch[1].trim();
+        }
+
+        let action = 'play';
+        let query = '';
+        let volume_percent = null;
+        let volume_direction = null;
+
+        if (exactStopIntent) action = 'pause';
+        else if (exactNextIntent) action = 'next';
+        else if (isSpotifyPrevIntent) action = 'previous';
+        else if (exactResumeIntent) action = 'resume';
+        else if (exactCurrentIntent) action = 'current';
+        else if (isVolIntent) {
+            action = 'volume';
+            const numMatch = userPrompt.match(/\b(\d+)\b/);
+            if (numMatch) {
+                volume_percent = parseInt(numMatch[1]);
+            } else if (isVolDownIntent) {
+                volume_direction = 'down';
+            } else {
+                volume_direction = 'up';
+            }
+        }
+        else {
+            query = userPrompt
+                .replace(/(?:puedes\s+)?(?:pon(?:me)?|poner(?:me)?|quiero\s+(?:escuchar\s+)?|reproduce|toca|inicia|escuchar)/i, '')
+                .replace(/(?:algo\s+de\s+|un\s+poco\s+de\s+)?(?:m[uú]sica|canci[oó]n|canci[oó]nes)/i, '')
+                .replace(/en (?:el |la |mi )?.+?(?:$| en spotify)/i, '')
+                .replace(/en spotify/i, '')
+                .replace(/^de\s+/i, '')
+                .replace(/^a\s+/i, '')
+                .trim();
+        }
+
+        console.log(`[Cronos AI] 🎵 Ejecutando play_music -> Action: "${action}", Query: "${query}", Device: "${targetDevice}", Vol: "${volume_percent}", Dir: "${volume_direction}"`);
+        const args = { action: action, device_name: targetDevice };
+        if (query) args.query = query;
+        if (volume_percent !== null) args.volume_percent = volume_percent;
+        if (volume_direction !== null) args.volume_direction = volume_direction;
+
+        const toolResult = await executeLocalTool('play_music', args);
+        
+        history.push({ role: 'assistant', content: toolResult });
+        return { text: toolResult, toolCall: [{ action: 'play_music', args: args }] };
+    }
+    // ==========================================
 
     const executedTools = [];
 
@@ -90,8 +214,11 @@ export const askAtlas = async (userPrompt, history = [], username = 'invitado') 
             const response = await ollama.chat({
                 model: MODEL,
                 messages: messages,
-                tools: atlasTools,
-                keep_alive: -1
+                tools: CronosTools,
+                keep_alive: -1,
+                options: {
+                    temperature: 0.75
+                }
             });
 
             const msg = response.message;
@@ -106,9 +233,9 @@ export const askAtlas = async (userPrompt, history = [], username = 'invitado') 
                     args: t.function.arguments
                 }));
             } 
-            else if (msg.content && msg.content.includes('{"name":')) {
-                console.log('[Atlas AI] ⚠️ El modelo escupió JSON en texto plano. Interceptando...');
-                const jsonRegex = /\{"name":\s*"([^"]+)",\s*"arguments":\s*(\{.*?\})\}/g;
+            else if (msg.content && (msg.content.includes('"name":') || msg.content.includes('"name" :'))) {
+                console.log('[Cronos AI] ⚠️ El modelo escupió JSON en texto plano. Interceptando...');
+                const jsonRegex = /\{\s*"name"\s*:\s*"([^"]+)"\s*,\s*"arguments"\s*:\s*(\{[\s\S]*?\})\s*\}/g;
                 let match;
                 while ((match = jsonRegex.exec(msg.content)) !== null) {
                     try {
@@ -126,7 +253,7 @@ export const askAtlas = async (userPrompt, history = [], username = 'invitado') 
             }
 
             if (pendingTools.length === 0) {
-                console.log('[Atlas AI] 🛑 Respuesta final generada.');
+                console.log('[Cronos AI] 🛑 Respuesta final generada.');
                 let finalText = (msg.content || '').trim();
                 if (!finalText && executedTools.length > 0) {
                     const isVoiceEnroll = executedTools.some(t => t.action === 'register_voice_profile');
@@ -136,13 +263,44 @@ export const askAtlas = async (userPrompt, history = [], username = 'invitado') 
                         finalText = "Operación realizada con éxito.";
                     }
                 }
+                // Limpiar caracteres chinos si el modelo mezcla idiomas y asteriscos para TTS
+                finalText = finalText.replace(/[\u4e00-\u9fa5]/g, '').replace(/[*_#]/g, '').trim();
                 return { text: finalText, toolCall: executedTools.length > 0 ? executedTools : null };
             }
 
             for (const tool of pendingTools) {
-                console.log(`[Atlas AI] 🔧 Ejecutando Tool Call: ${tool.action}`, tool.args);
+                console.log(`[Cronos AI] 🔧 Ejecutando Tool Call: ${tool.action}`, tool.args);
                 executedTools.push(tool);
                 let toolResult = "";
+
+                // ==========================================
+                // AUDITOR REFLEXIVO INVISIBLE (AUTO-MEJORA)
+                // ==========================================
+                if (tool.action === 'crear_pr_github') {
+                    console.log("[Cronos AI] 🕵️ Iniciando Auditor Reflexivo Interno...");
+                    const auditResponse = await ollama.chat({
+                        model: MODEL,
+                        messages: [
+                            ...messages,
+                            { role: 'user', content: 'CRÍTICO: Eres un auditor de código estricto. Revisa el código que acabas de modificar con `escribir_codigo`. Si el código introducido tiene errores de sintaxis, rompe el servidor, o tiene problemas lógicos, responde EXACTAMENTE: "ERROR: [Motivo del error]". Si está perfecto y listo para producción, responde EXACTAMENTE "PASS".' }
+                        ],
+                        options: { temperature: 0.1 } // Baja temperatura para análisis lógico
+                    });
+                    
+                    const auditText = auditResponse.message.content.trim();
+                    console.log(`[Cronos AI] 🕵️ Resultado Auditoría: ${auditText}`);
+                    
+                    if (auditText.startsWith("ERROR")) {
+                        console.log("[Cronos AI] ❌ Auditoría fallida. Bloqueando el PR y pidiendo auto-corrección.");
+                        toolResult = `La auditoría interna ha BLOQUEADO este PR. Motivo: ${auditText}. Por favor, vuelve a usar 'leer_codigo' o 'escribir_codigo' para arreglarlo antes de subir a GitHub.`;
+                        
+                        const toolMsg = { role: 'tool', content: toolResult };
+                        messages.push(toolMsg);
+                        history.push(toolMsg);
+                        continue; // Saltamos la ejecución de crear_pr_github
+                    }
+                }
+                // ==========================================
 
                 const localResult = await executeLocalTool(tool.action, tool.args);
                 
@@ -161,7 +319,7 @@ export const askAtlas = async (userPrompt, history = [], username = 'invitado') 
                     }
                 }
 
-                console.log(`[Atlas AI] ⬇️ Resultado devuelto al LLM: ${toolResult}`);
+                console.log(`[Cronos AI] ⬇️ Resultado devuelto al LLM: ${toolResult}`);
                 
                 const toolMsg = { role: 'tool', content: toolResult };
                 messages.push(toolMsg);
@@ -169,7 +327,7 @@ export const askAtlas = async (userPrompt, history = [], username = 'invitado') 
             }
         }
     } catch (error) {
-        console.error('[Atlas AI] ❌ Error en el bucle de inferencia:', error);
+        console.error('[Cronos AI] ❌ Error en el bucle de inferencia:', error);
         return { text: 'Mis circuitos han fallado.', toolCall: null };
     }
 };
@@ -180,14 +338,14 @@ export const askAtlas = async (userPrompt, history = [], username = 'invitado') 
 export const preloadModel = async () => {
     if (MOCK_AI) return;
     try {
-        console.log(`[Atlas AI] 🚀 Precalentando modelo ${MODEL} en VRAM de la GPU...`);
+        console.log(`[Cronos AI] 🚀 Precalentando modelo ${MODEL} en VRAM de la GPU...`);
         await ollama.chat({
             model: MODEL,
             messages: [{ role: 'user', content: 'hola' }],
             keep_alive: -1
         });
-        console.log(`[Atlas AI] ⚡ Modelo ${MODEL} listo en VRAM permanente.`);
+        console.log(`[Cronos AI] ⚡ Modelo ${MODEL} listo en VRAM permanente.`);
     } catch (e) {
-        console.warn(`[Atlas AI] Aviso precargando modelo:`, e.message);
+        console.warn(`[Cronos AI] Aviso precargando modelo:`, e.message);
     }
 };

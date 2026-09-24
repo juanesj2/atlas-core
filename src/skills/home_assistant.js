@@ -47,7 +47,7 @@ export const getEnvironmentContext = async () => {
     try {
         const res = await axios.get(`${HA_URL}/api/states`, {
             headers: { 'Authorization': `Bearer ${HA_TOKEN}`, 'Content-Type': 'application/json' },
-            timeout: 2000 // Rápido, no queremos retrasar a Atlas
+            timeout: 2000 // Rápido, no queremos retrasar a Cronos
         });
 
         // Filtrar entidades relevantes

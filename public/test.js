@@ -1,1256 +1,4 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cronos Web Simulator</title>
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
-        
-        * { box-sizing: border-box; font-family: 'Inter', sans-serif; }
-        
-        body { 
-            background: radial-gradient(circle at 10% 10%, #1e1b4b 0%, #020617 100%);
-            color: #f8fafc; display: flex; align-items: center; justify-content: center; 
-            height: 100vh; margin: 0; overflow: hidden;
-        }
 
-        /* --- DASHBOARD LAYOUT --- */
-        .app-container {
-            display: flex; gap: 30px; width: 95vw; max-width: 1300px; height: 85vh; align-items: stretch;
-        }
-
-        .panel-left {
-            width: 320px; background: rgba(15, 23, 42, 0.85); 
-            border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 24px; padding: 30px 20px;
-            display: flex; flex-direction: column; align-items: center; justify-content: space-between;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.3); flex-shrink: 0;
-            overflow-y: auto; overflow-x: hidden; scrollbar-width: none;
-        }
-        .panel-left::-webkit-scrollbar { display: none; }
-
-        .panel-right {
-            flex: 1; background: rgba(15, 23, 42, 0.85); 
-            border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 24px; padding: 30px;
-            display: flex; flex-direction: column; gap: 20px; min-width: 0;
-            box-shadow: 0 4px 30px rgba(0,0,0,0.3); 
-        }
-
-        .chat-container {
-            flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 20px; padding-right: 10px;
-            border: 1px solid rgba(255, 255, 255, 0.08); 
-            border-radius: 24px; padding: 15px 20px; box-shadow: 0 4px 30px rgba(0,0,0,0.3);
-            background: rgba(15, 23, 42, 0.85);
-        }
-
-        .input-bar { display: flex; gap: 15px; align-items: center; }
-        
-        .glass-input { 
-            flex: 1; background: rgba(15, 23, 42, 0.9); 
-            border: 1px solid rgba(255,255,255,0.15); border-radius: 50px; 
-            padding: 16px 25px; color: #fff; outline: none; font-size: 16px;
-            transition: all 0.3s ease;
-        }
-
-        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 1000; justify-content: center; align-items: center; }
-        
-        .modal-content { background: rgba(15, 23, 42, 0.95); border: 1px solid rgba(255,255,255,0.1); width: 90%; max-width: 500px; padding: 25px; border-radius: 20px; color: white; display: flex; flex-direction: column; max-height: 85vh; box-shadow: 0 20px 50px rgba(0,0,0,0.5); }
-
-        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&family=Share+Tech+Mono&display=swap');
-
-        /* --- CRONOS EYE (SCREEN) --- */
-        .screen-container {
-            width: clamp(200px, 40vh, 320px);
-            height: clamp(200px, 40vh, 320px);
-            background: #000;
-            border-radius: 50%;
-            position: relative;
-            overflow: hidden;
-            box-shadow: 0 0 50px rgba(0, 200, 255, 0.15), inset 0 0 20px rgba(0, 150, 255, 0.2);
-            border: 4px solid #111;
-            font-family: 'Share Tech Mono', monospace;
-            flex-shrink: 0;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            cursor: pointer;
-            user-select: none;
-            -webkit-tap-highlight-color: transparent;
-        }
-        .screen-container:hover {
-            box-shadow: 0 0 70px rgba(0, 229, 255, 0.35), inset 0 0 25px rgba(0, 200, 255, 0.3);
-        }
-        .screen-container:active {
-            transform: scale(0.96);
-        }
-
-        .center-abs {
-            position: absolute; top: 50%; left: 50%;
-            transform: translate(-50%, -50%);
-        }
-
-        .title-hud {
-            position: absolute; top: 12%; width: 100%; text-align: center;
-            font-family: 'Orbitron', sans-serif; font-size: clamp(15px, 2.8vh, 24px); font-weight: 700;
-            letter-spacing: 2px; text-shadow: 0 0 12px rgba(255, 255, 255, 0.9); z-index: 10; color: #fff;
-        }
-
-        .subtitle-hud {
-            position: absolute; top: 21%; width: 100%; text-align: center;
-            font-size: 9px; color: #00e5ff; letter-spacing: 2.5px; z-index: 10;
-        }
-
-        .status-hud {
-            position: absolute; bottom: 14%; width: 100%; text-align: center;
-            font-size: 8.5px; color: #00e5ff; letter-spacing: 1px; z-index: 10;
-            opacity: 0.9;
-        }
-
-        .core {
-            width: 32%; height: 32%; border-radius: 50%;
-            background: transparent;
-            animation: pulse-hud 2.5s infinite alternate ease-in-out; z-index: 5;
-            transition: all 0.3s ease;
-            display: flex; align-items: center; justify-content: center;
-            will-change: transform, opacity;
-            transform: translate3d(-50%, -50%, 0);
-            backface-visibility: hidden;
-        }
-
-        .core-glow {
-            width: 100%; height: 100%; border-radius: 50%;
-            background: radial-gradient(circle, rgba(255,255,255,0.9) 0%, rgba(0,255,255,0.7) 30%, rgba(0,120,255,0.4) 65%, transparent 80%);
-            transition: all 0.5s ease;
-            position: absolute; top: 50%; left: 50%;
-            will-change: transform;
-            transform: translate3d(-50%, -50%, 0);
-        }
-        
-        /* Aislar las sombras pesadas en un pseudo-elemento. La GPU las pre-renderiza 
-           como textura estática y las escala sin recalcular píxeles por CPU. */
-        .core-glow::after {
-            content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            border-radius: 50%;
-            box-shadow: 0 0 35px #00ffff, 0 0 70px rgba(0, 150, 255, 0.7), inset 0 0 20px rgba(255,255,255,0.8);
-            pointer-events: none;
-            transform: translateZ(0);
-        }
-
-        .core-svg {
-            width: 100%; height: 100%;
-            pointer-events: none;
-            overflow: visible;
-            color: #00ffff;
-            transition: color 0.5s ease;
-            position: absolute; top: 50%; left: 50%;
-            will-change: transform;
-            transform: translate3d(-50%, -50%, 0);
-        }
-
-        .neural-lattice {
-            transform-origin: 100px 100px;
-            animation: rotateSvgRight 24s linear infinite;
-            will-change: transform;
-        }
-
-        .plasma-lattice {
-            transform-origin: 100px 100px;
-            animation: rotateSvgLeft 14s linear infinite;
-            will-change: transform;
-        }
-
-        .core-singularity {
-            width: 14%; height: 14%; border-radius: 50%;
-            background: #ffffff;
-            /* box-shadow simplificada y aislada */
-            box-shadow: 0 0 15px #ffffff, 0 0 30px #00ffff;
-            animation: singularity-pulse 1.2s infinite alternate ease-in-out;
-            z-index: 6;
-            pointer-events: none;
-            position: absolute; top: 50%; left: 50%;
-            will-change: transform, opacity;
-            transform: translate3d(-50%, -50%, 0);
-            backface-visibility: hidden;
-        }
-
-        @keyframes singularity-pulse {
-            0% { transform: translate3d(-50%, -50%, 0) scale(0.85); opacity: 0.9; }
-            100% { transform: translate3d(-50%, -50%, 0) scale(1.25); opacity: 1; }
-        }
-
-        .ring {
-            border-radius: 50%; position: absolute; border-style: solid; pointer-events: none;
-            transition: border-color 0.5s ease;
-            will-change: transform;
-            transform: translateZ(0);
-        }
-
-        .ring-outer {
-            width: 78%; height: 78%; border-width: 2px; border-color: #00aaff; border-style: dashed;
-            opacity: 0.6; animation: rotateLeft 40s linear infinite;
-        }
-
-        .ring-mid {
-            width: 59%; height: 59%; border-width: 3px;
-            border-color: rgba(0, 255, 255, 0.8) transparent rgba(0, 255, 255, 0.8) transparent;
-            animation: rotateRight 8s linear infinite;
-        }
-
-        .ring-inner {
-            width: 40%; height: 40%; border-width: 1px; border-color: #00ffff; border-style: dashed;
-            box-shadow: 0 0 15px rgba(0, 255, 255, 0.3) inset; animation: rotateLeft 12s linear infinite;
-            transition: all 0.5s ease;
-        }
-
-        .svg-layer {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none;
-            will-change: transform;
-            transform: translateZ(0);
-        }
-        .svg-layer circle, .svg-layer path, .svg-layer text { transition: stroke 0.4s ease, fill 0.4s ease, opacity 0.4s ease; }
-
-        /* Hardware acceleration keyframes */
-        @keyframes rotateSvgRight { 0% { transform: translateZ(0) rotate(0deg); } 100% { transform: translateZ(0) rotate(360deg); } }
-        @keyframes rotateSvgLeft { 0% { transform: translateZ(0) rotate(0deg); } 100% { transform: translateZ(0) rotate(-360deg); } }
-        @keyframes pulse-hud { 0% { transform: translate3d(-50%, -50%, 0) scale(0.96); opacity: 0.85; } 100% { transform: translate3d(-50%, -50%, 0) scale(1.04); opacity: 1; } }
-        @keyframes speak-pulse { 0% { transform: translate3d(-50%, -50%, 0) scale(0.94); opacity: 0.85; } 100% { transform: translate3d(-50%, -50%, 0) scale(1.10); opacity: 1; } }
-
-        /* =========================================
-           ROTORES Y ENGRANAJES TECNOLÓGICOS DEL HUD
-           ========================================= */
-        .hud-crown-rotor {
-            transform-origin: 160px 160px;
-            will-change: transform;
-            transform: translateZ(0);
-            animation: rotateSvgRight 26s linear infinite;
-        }
-        .hud-crown-inner-rotor {
-            transform-origin: 160px 160px;
-            will-change: transform;
-            transform: translateZ(0);
-            animation: rotateSvgLeft 18s linear infinite;
-        }
-        .hud-outer-track {
-            transform-origin: 160px 160px;
-            will-change: transform;
-            transform: translateZ(0);
-            animation: rotateSvgLeft 45s linear infinite;
-        }
-
-        /* CHEVRONS LATERALES */
-        .hud-chevron {
-            transition: stroke 0.4s ease, opacity 0.4s ease;
-        }
-        .chevron-l {
-            animation: chevronPulseLeft 2.4s infinite ease-in-out;
-        }
-        .chevron-r {
-            animation: chevronPulseRight 2.4s infinite ease-in-out;
-        }
-
-        @keyframes chevronPulseLeft {
-            0%, 100% { transform: translateX(0); opacity: 0.7; }
-            50% { transform: translateX(-3.5px); opacity: 1; }
-        }
-        @keyframes chevronPulseRight {
-            0%, 100% { transform: translateX(0); opacity: 0.7; }
-            50% { transform: translateX(3.5px); opacity: 1; }
-        }
-
-        /* BARRAS DEL ECUALIZADOR RADIAL */
-        .eq-bar {
-            transform-origin: 160px 160px;
-            transition: stroke 0.3s ease;
-        }
-
-        /* Ondas suaves de respiración telemétrica en reposo */
-        .bar-1, .bar-7  { animation: eqStandby 3.0s infinite ease-in-out 0.0s; }
-        .bar-2, .bar-8  { animation: eqStandby 3.0s infinite ease-in-out 0.25s; }
-        .bar-3, .bar-9  { animation: eqStandby 3.0s infinite ease-in-out 0.5s; }
-        .bar-4, .bar-10 { animation: eqStandby 3.0s infinite ease-in-out 0.75s; }
-        .bar-5, .bar-11 { animation: eqStandby 3.0s infinite ease-in-out 1.0s; }
-        .bar-6, .bar-12 { animation: eqStandby 3.0s infinite ease-in-out 1.25s; }
-
-        @keyframes eqStandby {
-            0%, 100% { transform: scale(0.97); opacity: 0.65; }
-            50% { transform: scale(1.05); opacity: 0.95; }
-        }
-
-        /* Keyframes de espectro dinámico */
-        @keyframes eqBounceA { 0%, 100% { transform: scale(0.93); opacity: 0.5; } 50% { transform: scale(1.15); opacity: 1; } }
-        @keyframes eqBounceB { 0%, 100% { transform: scale(0.96); opacity: 0.6; } 50% { transform: scale(1.22); opacity: 1; } }
-        @keyframes eqBounceC { 0%, 100% { transform: scale(0.92); opacity: 0.5; } 50% { transform: scale(1.17); opacity: 1; } }
-        @keyframes eqBounceD { 0%, 100% { transform: scale(0.95); opacity: 0.65; } 50% { transform: scale(1.25); opacity: 1; } }
-
-        .hud-lower-arc {
-            transition: stroke 0.4s ease, opacity 0.4s ease;
-        }
-
-        /* =========================================
-           ESTADOS INTERACTIVOS Y ACELERACIÓN RÁPIDA
-           ========================================= */
-
-        /* 1. LISTENING: Verde esmeralda reactivo y alerta */
-        .state-listening .hud-crown-rotor { animation-duration: 10s; }
-        .state-listening .hud-crown-rotor circle { stroke: #00ff88; }
-        .state-listening .hud-crown-inner-rotor { animation-duration: 7s; }
-        .state-listening .hud-crown-inner-rotor circle { stroke: #00ff88; }
-        .state-listening .hud-outer-track { animation-duration: 18s; }
-        .state-listening .hud-outer-track circle { stroke: #00ff88; }
-        .state-listening .neural-lattice { animation-duration: 7s; }
-        .state-listening .plasma-lattice { animation-duration: 4.5s; }
-        .state-listening .core-glow { 
-            background: radial-gradient(circle, rgba(255,255,255,0.95) 0%, rgba(0,255,136,0.7) 30%, rgba(0,180,80,0.4) 65%, transparent 80%);
-        }
-        .state-listening .core-glow::after {
-            box-shadow: 0 0 45px #00ff88, 0 0 90px rgba(0, 200, 100, 0.8), inset 0 0 20px #fff;
-        }
-        .state-listening .core-svg { color: #00ff88; }
-        .state-listening .core-singularity { box-shadow: 0 0 15px #fff, 0 0 35px #00ff88; }
-        .state-listening .chevron-l { animation: chevronPulseLeft 0.8s infinite ease-in-out; stroke: #00ff88; opacity: 1; }
-        .state-listening .chevron-r { animation: chevronPulseRight 0.8s infinite ease-in-out; stroke: #00ff88; opacity: 1; }
-        .state-listening .eq-bar { stroke: #00ff88; }
-        .state-listening .bar-1, .state-listening .bar-7  { animation: eqBounceA 0.45s infinite alternate ease-in-out; }
-        .state-listening .bar-2, .state-listening .bar-8  { animation: eqBounceB 0.55s infinite alternate ease-in-out 0.1s; }
-        .state-listening .bar-3, .state-listening .bar-9  { animation: eqBounceC 0.40s infinite alternate ease-in-out 0.2s; }
-        .state-listening .bar-4, .state-listening .bar-10 { animation: eqBounceD 0.50s infinite alternate ease-in-out 0.05s; }
-        .state-listening .bar-5, .state-listening .bar-11 { animation: eqBounceA 0.42s infinite alternate ease-in-out 0.15s; }
-        .state-listening .bar-6, .state-listening .bar-12 { animation: eqBounceB 0.48s infinite alternate ease-in-out 0.25s; }
-        .state-listening .hud-lower-arc { opacity: 0.95; stroke: #00ff88; }
-        .state-listening .status-hud, .state-listening .subtitle-hud { color: #00ff88; }
-
-        /* 2. THINKING: Violeta / Magenta neón hiper-procesamiento ultra rápido */
-        .state-thinking .hud-crown-rotor { animation-duration: 3.5s; animation-direction: reverse; }
-        .state-thinking .hud-crown-rotor circle { stroke: #ff00ea; }
-        .state-thinking .hud-crown-inner-rotor { animation-duration: 2.2s; }
-        .state-thinking .hud-crown-inner-rotor circle { stroke: #b200ff; }
-        .state-thinking .hud-outer-track { animation-duration: 6s; }
-        .state-thinking .hud-outer-track circle { stroke: #ff00ea; }
-        .state-thinking .neural-lattice { animation-duration: 2.5s; }
-        .state-thinking .plasma-lattice { animation-duration: 1.5s; }
-        .state-thinking .core-glow { 
-            background: radial-gradient(circle, rgba(255,255,255,0.95) 0%, rgba(255,0,234,0.7) 30%, rgba(178,0,255,0.4) 65%, transparent 80%);
-        }
-        .state-thinking .core-glow::after {
-            box-shadow: 0 0 55px #ff00ea, 0 0 90px rgba(178, 0, 255, 0.8), inset 0 0 20px #fff;
-        }
-        .state-thinking .core-svg { color: #ff00ea; }
-        .state-thinking .core-singularity { 
-            box-shadow: 0 0 18px #fff, 0 0 40px #ff00ea;
-            animation: singularity-pulse 0.3s infinite alternate ease-in-out;
-        }
-        .state-thinking .chevron-l { animation: chevronPulseLeft 0.4s infinite ease-in-out; stroke: #ff00ea; opacity: 1; }
-        .state-thinking .chevron-r { animation: chevronPulseRight 0.4s infinite ease-in-out; stroke: #ff00ea; opacity: 1; }
-        .state-thinking .eq-bar { stroke: #ff00ea; }
-        .state-thinking .bar-1, .state-thinking .bar-7  { animation: eqBounceD 0.25s infinite alternate ease-in-out; }
-        .state-thinking .bar-2, .state-thinking .bar-8  { animation: eqBounceA 0.30s infinite alternate ease-in-out 0.05s; }
-        .state-thinking .bar-3, .state-thinking .bar-9  { animation: eqBounceB 0.22s infinite alternate ease-in-out 0.1s; }
-        .state-thinking .bar-4, .state-thinking .bar-10 { animation: eqBounceC 0.28s infinite alternate ease-in-out 0.03s; }
-        .state-thinking .bar-5, .state-thinking .bar-11 { animation: eqBounceD 0.24s infinite alternate ease-in-out 0.08s; }
-        .state-thinking .bar-6, .state-thinking .bar-12 { animation: eqBounceA 0.26s infinite alternate ease-in-out 0.12s; }
-        .state-thinking .hud-lower-arc { opacity: 0.95; stroke: #ff00ea; }
-        .state-thinking .status-hud, .state-thinking .subtitle-hud { color: #ff00ea; }
-
-        /* 3. SPEAKING: Blanco brillante / Cian reactivo con velocidad máxima y baile de voz */
-        .state-speaking .hud-crown-rotor { animation-duration: 4.5s; }
-        .state-speaking .hud-crown-rotor circle { stroke: #00ffff; }
-        .state-speaking .hud-crown-inner-rotor { animation-duration: 3.0s; }
-        .state-speaking .hud-crown-inner-rotor circle { stroke: #ffffff; }
-        .state-speaking .hud-outer-track { animation-duration: 8s; }
-        .state-speaking .hud-outer-track circle { stroke: #00e5ff; }
-        .state-speaking .neural-lattice { animation-duration: 3.2s; }
-        .state-speaking .plasma-lattice { animation-duration: 2.0s; }
-        .state-speaking .core-glow { 
-            background: radial-gradient(circle, #ffffff 0%, rgba(0,255,255,0.9) 30%, rgba(0,180,255,0.6) 65%, transparent 80%);
-            animation: speak-pulse 0.45s infinite alternate ease-in-out;
-        }
-        .state-speaking .core-glow::after {
-            box-shadow: 0 0 50px #ffffff, 0 0 100px rgba(0, 229, 255, 1), inset 0 0 25px #fff;
-        }
-        .state-speaking .core-svg { color: #ffffff; }
-        .state-speaking .core-singularity { 
-            box-shadow: 0 0 25px #fff, 0 0 50px #00ffff;
-            animation: singularity-pulse 0.35s infinite alternate ease-in-out;
-        }
-        .state-speaking .chevron-l { animation: chevronPulseLeft 0.45s infinite ease-in-out; stroke: #00ffff; opacity: 1; }
-        .state-speaking .chevron-r { animation: chevronPulseRight 0.45s infinite ease-in-out; stroke: #00ffff; opacity: 1; }
-        .state-speaking .eq-bar { stroke: #00ffff; }
-        /* Baile rítmico vivo de espectro imitando audio vocal de Cronos */
-        .state-speaking .bar-1, .state-speaking .bar-7  { animation: eqBounceB 0.22s infinite alternate ease-in-out; }
-        .state-speaking .bar-2, .state-speaking .bar-8  { animation: eqBounceD 0.32s infinite alternate ease-in-out 0.08s; }
-        .state-speaking .bar-3, .state-speaking .bar-9  { animation: eqBounceA 0.19s infinite alternate ease-in-out 0.03s; }
-        .state-speaking .bar-4, .state-speaking .bar-10 { animation: eqBounceC 0.28s infinite alternate ease-in-out 0.12s; }
-        .state-speaking .bar-5, .state-speaking .bar-11 { animation: eqBounceB 0.24s infinite alternate ease-in-out 0.05s; }
-        .state-speaking .bar-6, .state-speaking .bar-12 { animation: eqBounceD 0.20s infinite alternate ease-in-out 0.15s; }
-        .state-speaking .hud-lower-arc { opacity: 1; stroke: #00ffff; }
-        .state-speaking .status-hud, .state-speaking .subtitle-hud { color: #ffffff; }
-
-
-        /* --- SETTINGS GROUP --- */
-        .settings-group { width: 100%; display: flex; flex-direction: column; gap: 12px; }
-        .settings-label { color: #94a3b8; font-size: 11px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; margin-bottom: -5px; padding-left: 5px; }
-
-        /* --- CHAT BOX --- */
-        .chat-container { 
-            flex: 1; background: rgba(15, 23, 42, 0.4);  
-            border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 24px; 
-            padding: 25px; overflow-y: auto; display: flex; flex-direction: column; gap: 15px; 
-            box-shadow: 0 4px 30px rgba(0,0,0,0.3); 
-        }
-        .chat-container::-webkit-scrollbar { width: 6px; }
-        .chat-container::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
-        
-        .msg { padding: 14px 20px; border-radius: 18px; max-width: 80%; font-size: 16px; line-height: 1.5; font-weight: 400; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        .msg.user { background: linear-gradient(135deg, #0284c7, #2563eb); color: white; align-self: flex-end; border-bottom-right-radius: 4px; }
-        .msg.cronos { background: rgba(255, 255, 255, 0.1); color: #e2e8f0; align-self: flex-start; border-bottom-left-radius: 4px; border: 1px solid rgba(255,255,255,0.05); }
-
-        /* --- INPUT GROUP --- */
-        .input-group { 
-            display: flex; gap: 15px; align-items: center; background: rgba(15, 23, 42, 0.4); 
-             border: 1px solid rgba(255, 255, 255, 0.08); 
-            border-radius: 24px; padding: 15px 20px; box-shadow: 0 4px 30px rgba(0,0,0,0.3);
-            flex-wrap: nowrap;
-        }
-        
-        .glass-input, .glass-btn {
-            background: rgba(15, 23, 42, 0.5); 
-            border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 12px; 
-            padding: 12px 16px; color: white; font-size: 15px; outline: none; transition: all 0.2s;
-        }
-        .glass-input:focus { border-color: #38bdf8; box-shadow: 0 0 15px rgba(56, 189, 248, 0.2); background: rgba(15, 23, 42, 0.8); }
-        
-        input[type="text"].glass-input { flex-grow: 1; min-width: 0; }
-        select.glass-input { font-weight: 600; cursor: pointer; appearance: none; }
-        
-        button.glass-btn { background: rgba(56, 189, 248, 0.1); font-weight: 600; cursor: pointer; color: #38bdf8; border-color: rgba(56, 189, 248, 0.3); flex-shrink: 0; }
-        button.glass-btn:hover { background: rgba(56, 189, 248, 0.2); transform: translateY(-1px); }
-        
-        .btn-mic { background: linear-gradient(135deg, #f43f5e, #be123c); border: none; border-radius: 50%; width: 55px; height: 55px; font-size: 22px; display: flex; justify-content: center; align-items: center; flex-shrink: 0; cursor: pointer; box-shadow: 0 4px 15px rgba(244, 63, 94, 0.4); transition: transform 0.2s; }
-        .btn-mic:hover { transform: scale(1.05); }
-        .btn-mic.recording { animation: pulseMic 0.5s infinite alternate; background: #ef4444; box-shadow: 0 0 25px #ef4444; }
-        @keyframes pulseMic { 0% { transform: scale(0.95); } 100% { transform: scale(1.1); } }
-        
-        /* --- MODAL SKILLS & BIOMETRICS --- */
-        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6);  z-index: 1000; justify-content: center; align-items: center; }
-        .modal-overlay.open { display: flex !important; }
-        .modal-content { background: rgba(15, 23, 42, 0.85);  border: 1px solid rgba(255,255,255,0.1); width: 90%; max-width: 500px; padding: 25px; border-radius: 20px; color: white; display: flex; flex-direction: column; max-height: 85vh; box-shadow: 0 20px 50px rgba(0,0,0,0.5); }
-        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 15px; }
-        .modal-header h2 { margin: 0; font-weight: 800; font-size: 20px; display: flex; align-items: center; gap: 10px; }
-        .close-btn { background: transparent; color: rgba(255,255,255,0.5); font-size: 28px; border: none; cursor: pointer; padding: 0; width: 30px; height: 30px; line-height: 1; border-radius: 50%; transition: 0.2s; }
-        .close-btn:hover { color: white; background: rgba(255,255,255,0.1); }
-        .skills-list { overflow-y: auto; flex-grow: 1; display: flex; flex-direction: column; gap: 12px; padding-right: 5px; }
-        .skills-list::-webkit-scrollbar { width: 4px; }
-        .skills-list::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 10px; }
-        
-        .skill-card { background: rgba(255,255,255,0.03); border-radius: 12px; padding: 16px; display: flex; justify-content: space-between; align-items: center; border: 1px solid rgba(255,255,255,0.05); transition: 0.2s; }
-        .skill-card:hover { background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.1); }
-        .skill-title { font-weight: 800; font-size: 14px; letter-spacing: 1px; }
-        .skill-file { font-size: 12px; color: #94a3b8; margin-top: 4px; font-family: monospace; }
-        
-        .toggle-btn { padding: 8px 18px; border-radius: 20px; font-weight: 800; font-size: 12px; background: rgba(255,255,255,0.1); color: #94a3b8; border: none; cursor: pointer; transition: all 0.3s; }
-        .toggle-btn.active { background: rgba(34, 197, 94, 0.2); color: #4ade80; box-shadow: 0 0 15px rgba(34, 197, 94, 0.3); border: 1px solid rgba(34, 197, 94, 0.4); }
-
-        /* --- ELEMENTOS MÓVILES OCULTOS POR DEFECTO EN ESCRITORIO --- */
-        .drawer-backdrop { display: none; }
-        .drawer-header { display: none; }
-        .mobile-action-bar { display: none; }
-        .mobile-settings-btn, #mobileSettingsBtn, #mobileChatToggleBtn { display: none; }
-
-        /* --- RESPONSIVE MOBILE & TABLET (< 900px) --- */
-        @media (max-width: 900px) {
-            body {
-                padding: 0;
-                margin: 0;
-                height: 100vh;
-                height: 100dvh;
-                overflow: hidden;
-                position: relative;
-            }
-            .app-container {
-                flex-direction: column;
-                width: 100vw;
-                height: 100vh;
-                height: 100dvh;
-                max-width: none;
-                padding: 0;
-                margin: 0;
-                gap: 0;
-                border: none;
-                border-radius: 0;
-                overflow: hidden;
-                position: relative;
-            }
-
-            /* --- PANTALLA PRINCIPAL: BOLA GRANDE PROTAGONISTA --- */
-            .panel-left {
-                width: 100vw !important;
-                height: 100vh !important;
-                height: 100dvh !important;
-                flex: 1;
-                border-radius: 0;
-                border: none;
-                background: transparent;
-                box-shadow: none;
-                display: flex;
-                flex-direction: column;
-                align-items: center;
-                justify-content: space-between;
-                padding: 15px 15px max(20px, env(safe-area-inset-bottom)) 15px;
-                box-sizing: border-box;
-                position: relative;
-                z-index: 10;
-                overflow: hidden !important;
-            }
-
-            /* BOLA GRANDE CENTRADA - NUNCA SE CORTA */
-            .screen-container {
-                width: min(84vmin, calc(100dvh - 20px), 340px) !important;
-                height: min(84vmin, calc(100dvh - 20px), 340px) !important;
-                margin: auto !important;
-                border-width: 4px;
-                box-shadow: 0 0 50px rgba(0, 229, 255, 0.25), inset 0 0 30px rgba(0, 150, 255, 0.3) !important;
-                cursor: pointer;
-                user-select: none;
-                -webkit-tap-highlight-color: transparent;
-                transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.3s ease;
-            }
-            .screen-container:hover {
-                box-shadow: 0 0 75px rgba(0, 229, 255, 0.45), inset 0 0 35px rgba(0, 200, 255, 0.4) !important;
-            }
-            .screen-container:active {
-                transform: scale(0.95) !important;
-            }
-
-            #mobileSettingsBtn, #mobileChatToggleBtn {
-                position: absolute !important;
-                top: 15px !important;
-                display: flex !important;
-                align-items: center;
-                justify-content: center;
-                width: 44px;
-                height: 44px;
-                border-radius: 14px;
-                background: rgba(15, 23, 42, 0.65);
-                
-                
-                border: 1px solid rgba(255, 255, 255, 0.14);
-                color: #fff;
-                font-size: 20px;
-                cursor: pointer;
-                z-index: 120;
-                transition: all 0.2s ease;
-            }
-            #mobileSettingsBtn { right: 15px !important; }
-            #mobileChatToggleBtn { left: 15px !important; }
-            #mobileSettingsBtn:active, #mobileChatToggleBtn:active {
-                transform: scale(0.92);
-                background: rgba(0, 229, 255, 0.2);
-                border-color: rgba(0, 229, 255, 0.4);
-            }
-
-            .settings-group {
-                position: absolute;
-                top: 70px;
-                right: 15px;
-                left: 15px;
-                width: auto;
-                height: max-content;
-                background: rgba(15, 23, 42, 0.92);
-                
-                
-                padding: 20px;
-                padding-bottom: 25px !important;
-                box-sizing: border-box;
-                border-radius: 24px;
-                border: 1px solid rgba(0, 229, 255, 0.25);
-                box-shadow: 0 30px 60px rgba(0,0,0,0.9);
-                z-index: 150;
-                flex-direction: column;
-                opacity: 0;
-                transform: translateY(-20px) scale(0.95);
-                pointer-events: none;
-                transition: all 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
-                transform-origin: top right;
-            }
-            .settings-group.show {
-                opacity: 1;
-                transform: translateY(0) scale(1);
-                pointer-events: auto;
-            }
-
-            /* BARRA DE ACCIÓN INFERIOR MÓVIL */
-            .mobile-action-bar {
-                display: flex !important;
-                align-items: center;
-                justify-content: center;
-                gap: 25px;
-                width: 100%;
-                margin-top: auto;
-                z-index: 20;
-            }
-
-            .mobile-main-mic-btn {
-                width: 66px;
-                height: 66px;
-                border-radius: 50%;
-                background: rgba(255, 45, 85, 0.15);
-                border: 2px solid rgba(255, 45, 85, 0.5);
-                color: #fff;
-                font-size: 28px;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                cursor: pointer;
-                transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-                box-shadow: 0 0 30px rgba(255, 45, 85, 0.35);
-            }
-            .mobile-main-mic-btn:active {
-                transform: scale(0.92);
-            }
-            .mobile-main-mic-btn.recording {
-                background: #ff2d55;
-                border-color: #fff;
-                box-shadow: 0 0 50px #ff2d55, inset 0 0 15px rgba(255,255,255,0.6);
-                animation: pulse-red 1.2s infinite alternate;
-                transform: scale(1.08);
-            }
-
-            .mobile-open-chat-btn {
-                background: rgba(15, 23, 42, 0.75);
-                
-                
-                border: 1px solid rgba(0, 229, 255, 0.4);
-                color: #00e5ff;
-                font-family: 'Share Tech Mono', monospace;
-                font-size: 15px;
-                font-weight: 700;
-                letter-spacing: 1px;
-                padding: 14px 24px;
-                border-radius: 30px;
-                cursor: pointer;
-                display: flex;
-                align-items: center;
-                gap: 8px;
-                box-shadow: 0 10px 30px rgba(0,0,0,0.6);
-                transition: all 0.2s ease;
-            }
-            .mobile-open-chat-btn:active {
-                transform: scale(0.95);
-                background: rgba(0, 229, 255, 0.2);
-            }
-
-            /* --- BACKDROP OSCURO DEL DESPLEGABLE --- */
-            .drawer-backdrop {
-                display: block !important;
-                position: fixed;
-                inset: 0;
-                background: rgba(0, 0, 0, 0.7);
-                
-                
-                z-index: 180;
-                opacity: 0;
-                pointer-events: none;
-                transition: opacity 0.35s ease;
-            }
-            .drawer-backdrop.open {
-                opacity: 1;
-                pointer-events: auto;
-            }
-
-            /* --- DESPLEGABLE DEL CHAT (BOTTOM SHEET) --- */
-            .panel-right {
-                position: fixed !important;
-                bottom: 0 !important;
-                left: 0 !important;
-                right: 0 !important;
-                width: 100% !important;
-                height: 80vh !important;
-                height: 80dvh !important;
-                max-height: 88vh !important;
-                background: rgba(10, 15, 30, 0.95) !important;
-                
-                
-                border-top: 1px solid rgba(0, 229, 255, 0.35) !important;
-                border-radius: 28px 28px 0 0 !important;
-                box-shadow: 0 -15px 50px rgba(0, 0, 0, 0.9) !important;
-                z-index: 200 !important;
-                display: flex !important;
-                flex-direction: column !important;
-                transform: translateY(calc(100% + 40px)) !important;
-                visibility: hidden;
-                transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.4s !important;
-                padding: 0 !important;
-                margin: 0 !important;
-                gap: 0 !important;
-            }
-            .panel-right.open {
-                transform: translateY(0) !important;
-                visibility: visible;
-            }
-
-            /* --- AJUSTES ESPECÍFICOS PARA MÓVIL EN HORIZONTAL (LANDSCAPE) --- */
-            @media (orientation: landscape) and (max-height: 550px) {
-                .panel-left {
-                    justify-content: center !important;
-                    padding: 0 !important;
-                }
-                .mobile-action-bar {
-                    display: none !important;
-                }
-                .screen-container {
-                    width: min(84vmin, calc(100dvh - 16px), 320px) !important;
-                    height: min(84vmin, calc(100dvh - 16px), 320px) !important;
-                    margin: auto !important;
-                }
-                .panel-right {
-                    height: 92vh !important;
-                    height: 92dvh !important;
-                }
-                .chat-container {
-                    padding: 10px 16px !important;
-                }
-                .input-group {
-                    padding: 8px 15px !important;
-                }
-                .settings-group {
-                    top: 60px;
-                    max-height: 80vh;
-                    overflow-y: auto;
-                }
-            }
-
-            .drawer-header {
-                display: flex !important;
-                flex-direction: column;
-                align-items: center;
-                padding: 12px 18px 10px;
-                border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-                flex-shrink: 0;
-                cursor: pointer;
-                user-select: none;
-            }
-            .drawer-handle {
-                width: 40px;
-                height: 4px;
-                border-radius: 2px;
-                background: rgba(255, 255, 255, 0.3);
-                margin-bottom: 10px;
-            }
-            .drawer-title-row {
-                width: 100%;
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-            }
-            .drawer-title {
-                font-family: 'Orbitron', sans-serif;
-                font-size: 13px;
-                font-weight: 700;
-                color: #00e5ff;
-                letter-spacing: 1.5px;
-            }
-            .drawer-close-btn {
-                background: rgba(255, 255, 255, 0.08);
-                border: 1px solid rgba(255, 255, 255, 0.15);
-                border-radius: 50%;
-                width: 30px;
-                height: 30px;
-                color: #fff;
-                font-size: 14px;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                cursor: pointer;
-                transition: all 0.2s ease;
-            }
-            .drawer-close-btn:active {
-                background: rgba(239, 68, 68, 0.3);
-                color: #ef4444;
-            }
-
-            .chat-container {
-                flex: 1 !important;
-                border-radius: 0 !important;
-                border: none !important;
-                padding: 16px !important;
-                overflow-y: auto !important;
-            }
-
-            .input-group {
-                border-radius: 0 !important;
-                border: none !important;
-                border-top: 1px solid rgba(255,255,255,0.08) !important;
-                flex-wrap: nowrap !important;
-                padding: 12px 15px !important;
-                padding-bottom: max(15px, env(safe-area-inset-bottom)) !important;
-                gap: 10px !important;
-                background: rgba(15, 23, 42, 0.9) !important;
-            }
-            .btn-mic {
-                width: 46px;
-                height: 46px;
-                min-width: 46px;
-            }
-            #commandInput {
-                flex: 1;
-                min-width: 0;
-                font-size: 16px;
-            }
-            .input-group .glass-btn {
-                padding: 0 16px !important;
-                height: 46px;
-                white-space: nowrap;
-            }
-            .modal-content {
-                width: 95% !important;
-                max-width: none;
-            }
-        }
-
-        /* BANNER FLOTANTE DE AVISO DE MICRÓFONO / HTTPS */
-        .mic-prompt-banner {
-            position: fixed;
-            top: 15px;
-            left: 50%;
-            transform: translate(-50%, -15px);
-            background: rgba(15, 23, 42, 0.95);
-            
-            
-            border: 1px solid rgba(0, 229, 255, 0.5);
-            box-shadow: 0 10px 40px rgba(0,0,0,0.85);
-            border-radius: 16px;
-            padding: 10px 18px;
-            z-index: 500;
-            color: #fff;
-            font-size: 13px;
-            display: none;
-            align-items: center;
-            justify-content: center;
-            max-width: 92vw;
-            box-sizing: border-box;
-            opacity: 0;
-            transition: opacity 0.5s ease, transform 0.5s ease;
-            cursor: pointer;
-        }
-        .mic-prompt-banner.visible {
-            opacity: 1;
-            transform: translate(-50%, 0);
-        }
-        .mic-prompt-banner.hidden {
-            opacity: 0;
-            transform: translate(-50%, -15px);
-        }
-    </style>
-</head>
-<body>
-    <!-- Banner de Permisos de Micrófono y Conexión Segura -->
-    <div id="micPromptBanner" class="mic-prompt-banner" onclick="hideMicBanner()" title="Haz clic para cerrar">
-        <div id="micPromptContent" style="display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap;"></div>
-        <button onclick="event.stopPropagation(); hideMicBanner();" style="background: none; border: none; color: #94a3b8; font-size: 16px; margin-left: 10px; cursor: pointer; line-height: 1;" title="Cerrar">&times;</button>
-    </div>
-    <!-- Modal Skills -->
-    <div class="modal-overlay" id="skillsModal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2>⚙️ Gestor de Extensiones</h2>
-                <button class="close-btn" onclick="closeSkillsManager()">&times;</button>
-            </div>
-            <div class="skills-list" id="skillsList">
-                <!-- Se rellena por JS -->
-            </div>
-            <div style="margin-top:20px; text-align:center; font-size:12px; color:#888;">
-                Para añadir nuevas skills, guarda el archivo .js en la carpeta src/skills/ del servidor.
-            </div>
-        </div>
-    </div>
-
-    <!-- Modal Rutinas -->
-    <div class="modal-overlay" id="routinesModal">
-        <div class="modal-content" style="width: 500px;">
-            <div class="modal-header">
-                <h2>⏰ Gestor de Rutinas</h2>
-                <button class="close-btn" onclick="closeRoutinesManager()">&times;</button>
-            </div>
-            
-            <!-- Crear Rutina Manualmente -->
-            <div style="background: rgba(255,255,255,0.05); padding: 15px; border-radius: 12px; margin-bottom: 15px;">
-                <h3 style="font-size: 14px; margin-top: 0; margin-bottom: 10px; color: #4ade80;">+ Nueva Rutina</h3>
-                <div style="display: flex; gap: 10px; margin-bottom: 10px;">
-                    <input type="text" id="newRoutineName" class="glass-input" placeholder="Nombre (ej: Despertar)" style="flex: 2; padding: 8px;">
-                    <input type="time" id="newRoutineTime" class="glass-input" style="flex: 1; padding: 8px;" title="Hora">
-                </div>
-                <textarea id="newRoutinePrompt" class="glass-input" placeholder="Órdenes (ej: Enciende la luz, dime el tiempo que hará hoy y da los buenos días de forma alegre)" style="width: 100%; padding: 8px; margin-bottom: 10px; resize: vertical;" rows="3"></textarea>
-                <button id="saveRoutineBtn" class="glass-btn" onclick="createManualRoutine()" style="width: 100%; justify-content: center; background: rgba(34, 197, 94, 0.2); color: #4ade80;">Guardar Rutina</button>
-            </div>
-
-            <div class="skills-list" id="routinesList">
-                <!-- Se rellena por JS -->
-            </div>
-            <div style="margin-top:20px; text-align:center; font-size:12px; color:#888;">
-                También puedes pedirle a Cronos por voz que las cree.
-            </div>
-        </div>
-    </div>
-
-    <!-- Modal Huella de Voz (Biometría) -->
-    <div class="modal-overlay" id="voiceProfilesModal">
-        <div class="modal-content" style="width: 520px; max-width: 95vw;">
-            <div class="modal-header">
-                <h2>🎙️ Huella de Voz (Biometría)</h2>
-                <button class="close-btn" onclick="closeVoiceProfilesModal()">&times;</button>
-            </div>
-            
-            <!-- Registro de nueva huella de voz -->
-            <div style="background: rgba(0, 229, 255, 0.05); border: 1px solid rgba(0, 229, 255, 0.2); padding: 16px; border-radius: 14px; margin-bottom: 16px;">
-                <h3 style="font-size: 14px; margin-top: 0; margin-bottom: 8px; color: #00e5ff;">🧬 Registrar Nueva Huella de Voz</h3>
-                <p style="font-size: 12px; color: #94a3b8; margin-top: 0; margin-bottom: 12px; line-height: 1.4;">
-                    Cronos usará su red neuronal ECAPA-TDNN para reconocer quién le habla por el timbre exacto de tu voz.
-                </p>
-                <div style="display: flex; gap: 10px; margin-bottom: 12px;">
-                    <input type="text" id="voiceProfileName" class="glass-input" placeholder="Tu nombre (ej: Juanes)" value="Juanes" style="flex: 1; padding: 10px;">
-                </div>
-
-                <div id="enrollRecordStatus" style="font-size: 12px; color: #00e5ff; text-align: center; margin-bottom: 10px; min-height: 20px; font-weight: 600;"></div>
-
-                <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-                    <button id="startEnrollBtn" class="glass-btn" onclick="startVoiceEnrollment()" style="flex: 1; justify-content: center; background: rgba(0, 229, 255, 0.15); border-color: rgba(0, 229, 255, 0.5); color: #00e5ff; font-weight: 600; padding: 10px;">
-                        ⏺️ Grabar Mi Voz (5s)
-                    </button>
-                    <button id="testIdentifyBtn" class="glass-btn" onclick="testVoiceIdentification()" style="flex: 1; justify-content: center; background: rgba(168, 85, 247, 0.15); border-color: rgba(168, 85, 247, 0.5); color: #c084fc; font-weight: 600; padding: 10px;">
-                        🔍 Probar Reconocimiento (4s)
-                    </button>
-                </div>
-            </div>
-
-            <div class="settings-label" style="margin-bottom: 10px; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #64748b;">Perfiles de Voz Guardados</div>
-            <div class="skills-list" id="voiceProfilesList" style="max-height: 220px; overflow-y: auto;">
-                <!-- Se rellena por JS -->
-            </div>
-            
-            <div id="identifyResultBox" style="display: none; margin-top: 15px; padding: 12px; border-radius: 10px; background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(255,255,255,0.1); font-size: 12px; text-align: center;">
-            </div>
-        </div>
-    </div>
-
-    <!-- Modal Autoaprendizaje y Cerebro -->
-    <div class="modal-overlay" id="learningModal">
-        <div class="modal-content" style="width: 580px; max-width: 95vw; max-height: 88vh; display: flex; flex-direction: column;">
-            <div class="modal-header">
-                <h2>🧠 Cerebro & Autoaprendizaje</h2>
-                <button class="close-btn" onclick="closeLearningModal()">&times;</button>
-            </div>
-
-            <!-- Resumen & Acciones Inmediatas -->
-            <div style="background: rgba(168, 85, 247, 0.08); border: 1px solid rgba(168, 85, 247, 0.25); padding: 14px; border-radius: 14px; margin-bottom: 14px; flex-shrink: 0;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                    <span style="font-size: 13px; font-weight: 700; color: #c084fc;">⚡ Motor Continuo de Autoaprendizaje</span>
-                    <span id="learningStatusBadge" style="font-size: 10px; background: rgba(34,197,94,0.2); color: #4ade80; padding: 2px 8px; border-radius: 10px; font-weight: 600;">ACTIVO</span>
-                </div>
-                <div id="learningStatsSummary" style="font-size: 12px; color: #94a3b8; line-height: 1.5; margin-bottom: 12px;">
-                    Cargando estadísticas de interacciones y memoria...
-                </div>
-                <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-                    <button id="btnRunLearningCycle" class="glass-btn" onclick="triggerManualLearningCycle()" style="flex: 1; justify-content: center; background: rgba(168, 85, 247, 0.2); border-color: rgba(168, 85, 247, 0.5); color: #c084fc; font-weight: 600; padding: 10px;">
-                        ⚡ Consolidar Aprendizajes Ahora
-                    </button>
-                    <button id="btnExploreCuriosity" class="glass-btn" onclick="triggerManualCuriosityExplore()" style="flex: 1; justify-content: center; background: rgba(0, 229, 255, 0.15); border-color: rgba(0, 229, 255, 0.4); color: #00e5ff; font-weight: 600; padding: 10px;">
-                        🌐 Investigar Curiosidad (Web)
-                    </button>
-                </div>
-                <div id="learningActionFeedback" style="font-size: 11px; color: #c084fc; text-align: center; margin-top: 8px; min-height: 16px; font-weight: 600;"></div>
-            </div>
-
-            <!-- Pestañas de Vista (Lecciones / Memoria RAG / Curiosidades) -->
-            <div style="display: flex; gap: 8px; margin-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 8px; flex-shrink: 0;">
-                <button id="tabBtnLessons" class="glass-btn" onclick="switchLearningTab('lessons')" style="flex: 1; justify-content: center; font-size: 12px; padding: 8px 10px; background: rgba(168, 85, 247, 0.25); color: #c084fc;">
-                    📜 Lecciones (<span id="lessonsCount">0</span>)
-                </button>
-                <button id="tabBtnMemories" class="glass-btn" onclick="switchLearningTab('memories')" style="flex: 1; justify-content: center; font-size: 12px; padding: 8px 10px; background: rgba(255,255,255,0.05); color: #94a3b8;">
-                    🧠 Recuerdos RAG (<span id="memoriesCount">0</span>)
-                </button>
-                <button id="tabBtnCuriosity" class="glass-btn" onclick="switchLearningTab('curiosity')" style="flex: 1; justify-content: center; font-size: 12px; padding: 8px 10px; background: rgba(255,255,255,0.05); color: #94a3b8;">
-                    🔍 Curiosidades (<span id="curiosityCount">0</span>)
-                </button>
-            </div>
-
-            <!-- Contenido scrollable de pestañas -->
-            <div style="flex: 1; overflow-y: auto; min-height: 150px; max-height: 320px; padding-right: 4px;">
-                <div id="tabContentLessons" class="skills-list"></div>
-                <div id="tabContentMemories" class="skills-list" style="display: none;"></div>
-                <div id="tabContentCuriosity" class="skills-list" style="display: none;"></div>
-            </div>
-        </div>
-    </div>
-
-    <!-- MAIN DASHBOARD -->
-    <div class="app-container">
-        
-        <!-- SIDEBAR IZQUIERDO -->
-        <div class="panel-left" style="position: relative;">
-            <button id="mobileChatToggleBtn" class="glass-btn" onclick="toggleMobileChat(true)" title="Abrir Chat & Comandos">💬</button>
-            <button id="mobileSettingsBtn" class="glass-btn" onclick="toggleMobileSettings()" title="Ajustes">⚙️</button>
-            
-            <div class="screen-container" id="screen" onclick="toggleMic()" title="Toca el núcleo para hablar con Cronos">
-                <svg class="svg-layer" viewBox="0 0 320 320" preserveAspectRatio="xMidYMid meet">
-                    <defs>
-                        <!-- Guías invisibles de trayectoria para textPath (al estar en defs nunca se dibujan como trazos ni se superponen) -->
-                        <!-- Curva inferior para SISTEMA CRONOS IA: R=105, centrada perfectamente en la pista entre R=94.2 y R=116 -->
-                        <path id="bottomTextPath" d="M 55 160 A 105 105 0 0 0 265 160" />
-                        <!-- Curva inferior para ESTADO: REPOSO: R=83, centrada perfectamente en la pista entre R=72 y R=94.2 -->
-                        <path id="statusTextPath" d="M 77 160 A 83 83 0 0 0 243 160" />
-                    </defs>
-
-                    <!-- 1. DIAL EXTERIOR: Regla graduada milimétrica y radar telemétrico giratorio -->
-                    <circle cx="160" cy="160" r="152" fill="none" stroke="#00ffff" stroke-width="6" stroke-dasharray="1 5" opacity="0.75" />
-                    <circle cx="160" cy="160" r="147" fill="none" stroke="#0077aa" stroke-width="1.5" opacity="0.5" />
-                    <g class="hud-outer-track">
-                        <circle cx="160" cy="160" r="142" fill="none" stroke="#00e5ff" stroke-width="2" stroke-dasharray="3 30" opacity="0.9" />
-                        <circle cx="160" cy="160" r="136" fill="none" stroke="#0077aa" stroke-width="1" stroke-dasharray="6 45" opacity="0.5" />
-                    </g>
-
-                    <!-- 2. NÚMEROS DE TELEMETRÍA ANGULAR EXTERIOR (R=144, pegados al dial exterior) -->
-                    <g fill="#00e5ff" font-size="5.5" font-family="'Share Tech Mono', monospace" text-anchor="middle" opacity="0.8">
-                        <text x="160" y="21">0</text>
-                        <text x="197" y="26">15</text>
-                        <text x="231" y="39">30</text>
-                        <text x="261" y="60">45</text>
-                        <text x="284" y="88">60</text>
-                        <text x="298" y="122">75</text>
-                        <text x="303" y="162">90</text>
-                        <text x="298" y="202">105</text>
-                        <text x="284" y="236">120</text>
-                        <text x="261" y="264">135</text>
-                        <text x="231" y="285">150</text>
-                        <text x="197" y="298">165</text>
-                        <text x="160" y="303">180</text>
-                        <text x="123" y="298">195</text>
-                        <text x="89" y="285">210</text>
-                        <text x="59" y="264">225</text>
-                        <text x="36" y="236">240</text>
-                        <text x="22" y="202">255</text>
-                        <text x="17" y="162">270</text>
-                        <text x="22" y="122">285</text>
-                        <text x="36" y="88">300</text>
-                        <text x="59" y="60">315</text>
-                        <text x="89" y="39">330</text>
-                        <text x="123" y="26">345</text>
-                    </g>
-
-                    <!-- 3. DIAL INTERMEDIO: Aros y líneas de mira telescópica (Retículas 0°, 90°, 180°, 270°) -->
-                    <circle cx="160" cy="160" r="130" fill="none" stroke="#00e5ff" stroke-width="1.2" opacity="0.4" />
-                    <line x1="24" y1="160" x2="44" y2="160" stroke="#00ffff" stroke-width="1.5" opacity="0.8" />
-                    <line x1="276" y1="160" x2="296" y2="160" stroke="#00ffff" stroke-width="1.5" opacity="0.8" />
-                    <line x1="160" y1="24" x2="160" y2="44" stroke="#00ffff" stroke-width="1.5" opacity="0.8" />
-                    <line x1="160" y1="276" x2="160" y2="296" stroke="#00ffff" stroke-width="1.5" opacity="0.8" />
-
-                    <!-- 4. TEXTO CURVADO INFERIOR (Banda exterior R=105, centrada entre R=94.2 y R=116) -->
-                    <text font-size="7.5" fill="#00e5ff" font-family="'Share Tech Mono', monospace" letter-spacing="2.2" opacity="0.95">
-                        <textPath href="#bottomTextPath" startOffset="50%" text-anchor="middle">
-                            SISTEMA CRONOS IA v2.1 // EN ESPERA // LISTO
-                        </textPath>
-                    </text>
-
-                    <!-- 5. ECUALIZADOR RADIAL ELEVADO (Despejado por encima de las flechitas < >) -->
-                    <g class="hud-equalizer" stroke="#00ffff" stroke-linecap="round" opacity="0.85">
-                        <!-- Barras radiales izquierdas -->
-                        <line class="eq-bar bar-1" x1="116" y1="94" x2="106" y2="82" stroke-width="1.8"/>
-                        <line class="eq-bar bar-2" x1="108" y1="101" x2="96" y2="90" stroke-width="2.2"/>
-                        <line class="eq-bar bar-3" x1="100" y1="109" x2="88" y2="99" stroke-width="2.4"/>
-                        <line class="eq-bar bar-4" x1="93" y1="118" x2="80" y2="109" stroke-width="2.4"/>
-                        <line class="eq-bar bar-5" x1="88" y1="128" x2="74" y2="120" stroke-width="2.2"/>
-                        <line class="eq-bar bar-6" x1="84" y1="139" x2="70" y2="133" stroke-width="2"/>
-
-                        <!-- Barras radiales derechas -->
-                        <line class="eq-bar bar-7" x1="204" y1="94" x2="214" y2="82" stroke-width="1.8"/>
-                        <line class="eq-bar bar-8" x1="212" y1="101" x2="224" y2="90" stroke-width="2.2"/>
-                        <line class="eq-bar bar-9" x1="220" y1="109" x2="232" y2="99" stroke-width="2.4"/>
-                        <line class="eq-bar bar-10" x1="227" y1="118" x2="240" y2="109" stroke-width="2.4"/>
-                        <line class="eq-bar bar-11" x1="232" y1="128" x2="246" y2="120" stroke-width="2.2"/>
-                        <line class="eq-bar bar-12" x1="236" y1="139" x2="250" y2="133" stroke-width="2"/>
-                    </g>
-
-                    <!-- 6. LÍNEAS TELEMÉTRICAS INFERIORES CUADRADAS Y ACTIVAS -->
-                    <!-- Arco exterior (R=116): Enlace continuo sin holguras con las retículas horizontales y vertical inferior -->
-                    <path class="hud-lower-arc arc-outer" d="M 44 160 A 116 116 0 0 0 276 160" fill="none" stroke="#00e5ff" stroke-width="1.3" opacity="0.3" />
-
-                    <!-- Arco interior (R=94.2): Enlace concéntrico continuo que nace y muere en las puntas inferiores de los chevrons laterales -->
-                    <path class="hud-lower-arc arc-inner" d="M 66 166 A 94.2 94.2 0 0 0 254 166" fill="none" stroke="#00e5ff" stroke-width="1.3" opacity="0.3" />
-
-                    <!-- 7. MARCADORES DE FLECHITA / CHEVRONS LATERALES DINÁMICOS -->
-                    <path class="hud-chevron chevron-l" d="M 66 154 L 60 160 L 66 166" fill="none" stroke="#00ffff" stroke-width="1.5" stroke-linejoin="round" opacity="0.8" />
-                    <path class="hud-chevron chevron-r" d="M 254 154 L 260 160 L 254 166" fill="none" stroke="#00ffff" stroke-width="1.5" stroke-linejoin="round" opacity="0.8" />
-
-                    <!-- 8. CORONA DE BLOQUES MECÁNICOS / ALMENAS (Rotores del Reactor Arc) -->
-                    <g class="hud-crown-rotor">
-                        <circle cx="160" cy="160" r="66" fill="none" stroke="#00e5ff" stroke-width="7" stroke-dasharray="12 8" stroke-dashoffset="14" opacity="0.85"/>
-                        <circle cx="160" cy="160" r="59" fill="none" stroke="#00e5ff" stroke-width="1.2" opacity="0.7"/>
-                    </g>
-                    <g class="hud-crown-inner-rotor">
-                        <circle cx="160" cy="160" r="72" fill="none" stroke="#0077aa" stroke-width="1.2" stroke-dasharray="2 5" opacity="0.6"/>
-                    </g>
-
-                    <!-- 9. ICONO CIRCULAR DE MICRÓFONO INFERIOR CENTRAL -->
-                    <g transform="translate(160, 204)">
-                        <!-- Aro del icono -->
-                        <circle cx="0" cy="0" r="8" fill="#04121d" stroke="#00ffff" stroke-width="1.2" />
-                        <!-- Cápsula del micrófono -->
-                        <rect x="-2" y="-5" width="4" height="6" rx="2" fill="none" stroke="#00ffff" stroke-width="0.9" />
-                        <!-- Soporte curvo -->
-                        <path d="M -3.6 -1.8 A 3.6 3.6 0 0 0 3.6 -1.8" fill="none" stroke="#00ffff" stroke-width="0.9" />
-                        <!-- Pie y base -->
-                        <line x1="0" y1="1.8" x2="0" y2="4" stroke="#00ffff" stroke-width="0.9" />
-                        <line x1="-2.5" y1="4" x2="2.5" y2="4" stroke="#00ffff" stroke-width="0.9" />
-                    </g>
-
-                    <!-- 10. TEXTO DE ESTADO CURVADO (Banda interior R=83, centrada entre R=72 y R=94.2) -->
-                    <text font-size="7" fill="#00e5ff" font-family="'Share Tech Mono', monospace" letter-spacing="1.5">
-                        <textPath href="#statusTextPath" startOffset="50%" text-anchor="middle">
-                            ESTADO: <tspan id="stateText">REPOSO</tspan> // DI "CRONOS"
-                        </textPath>
-                    </text>
-                </svg>
-
-                <div class="title-hud">CRONOS</div>
-                <div class="subtitle-hud">VOZ ACTIVA</div>
-
-                <div class="core center-abs">
-                    <!-- Esfera de energía base y destello -->
-                    <div class="core-glow center-abs"></div>
-
-                    <!-- Malla geométrica neural multicapa tipo reactor cuántico -->
-                    <svg class="core-svg center-abs" viewBox="0 0 200 200">
-                        <defs>
-                            <radialGradient id="plasmaGlow" cx="50%" cy="50%" r="50%">
-                                <stop offset="0%" stop-color="#ffffff" stop-opacity="1"/>
-                                <stop offset="25%" stop-color="#00ffff" stop-opacity="0.9"/>
-                                <stop offset="65%" stop-color="#0066ff" stop-opacity="0.5"/>
-                                <stop offset="100%" stop-color="#002266" stop-opacity="0"/>
-                            </radialGradient>
-                        </defs>
-
-                        <!-- Capa 1: Hexagrama / Icosaedro Sagrado Rotatorio -->
-                        <g class="neural-lattice">
-                            <!-- Estrella de triángulos entrelazados (Geometría del Reactor) -->
-                            <polygon points="100,20 169,140 31,140" fill="none" stroke="currentColor" stroke-width="1.2" opacity="0.75"/>
-                            <polygon points="100,180 31,60 169,60" fill="none" stroke="currentColor" stroke-width="1.2" opacity="0.75"/>
-                            <polygon points="20,100 140,31 140,169" fill="none" stroke="currentColor" stroke-width="0.8" opacity="0.5"/>
-                            <polygon points="180,100 60,169 60,31" fill="none" stroke="currentColor" stroke-width="0.8" opacity="0.5"/>
-                            
-                            <!-- Anillo interior conector con nodos -->
-                            <circle cx="100" cy="100" r="80" fill="none" stroke="currentColor" stroke-width="1" stroke-dasharray="4 6" opacity="0.6"/>
-                            <circle cx="100" cy="100" r="55" fill="none" stroke="currentColor" stroke-width="1" opacity="0.5"/>
-
-                            <!-- Rayos diagonales de convergencia -->
-                            <line x1="20" y1="100" x2="180" y2="100" stroke="currentColor" stroke-width="0.8" opacity="0.4"/>
-                            <line x1="100" y1="20" x2="100" y2="180" stroke="currentColor" stroke-width="0.8" opacity="0.4"/>
-                            <line x1="43" y1="43" x2="157" y2="157" stroke="currentColor" stroke-width="0.8" opacity="0.4"/>
-                            <line x1="157" y1="43" x2="43" y2="157" stroke="currentColor" stroke-width="0.8" opacity="0.4"/>
-
-                            <!-- Nodos de sinapsis luminosos -->
-                            <circle cx="100" cy="20" r="3" fill="#fff" />
-                            <circle cx="169" cy="140" r="3" fill="#fff" />
-                            <circle cx="31" cy="140" r="3" fill="#fff" />
-                            <circle cx="100" cy="180" r="3" fill="#fff" />
-                            <circle cx="31" cy="60" r="3" fill="#fff" />
-                            <circle cx="169" cy="60" r="3" fill="#fff" />
-                            <circle cx="100" cy="100" r="4" fill="#fff" />
-                        </g>
-
-                        <!-- Capa 2: Constelación contrarrotatoria con arcos de plasma -->
-                        <g class="plasma-lattice">
-                            <circle cx="100" cy="100" r="40" fill="none" stroke="currentColor" stroke-width="1.5" stroke-dasharray="12 8" opacity="0.8"/>
-                            <circle cx="100" cy="100" r="22" fill="none" stroke="#ffffff" stroke-width="1.2" opacity="0.9"/>
-                            
-                            <!-- Constelación orbital de partículas -->
-                            <circle cx="100" cy="60" r="2" fill="#fff" />
-                            <circle cx="140" cy="100" r="2" fill="#fff" />
-                            <circle cx="100" cy="140" r="2" fill="#fff" />
-                            <circle cx="60" cy="100" r="2" fill="#fff" />
-                        </g>
-                    </svg>
-
-                    <!-- Punto focal central superbrillante (Singularidad) -->
-                    <div class="core-singularity center-abs"></div>
-                </div>
-            </div>
-
-            <div class="settings-group" id="settingsGroup">
-                <div class="settings-label">Sistema & Identidad</div>
-                <div style="display:flex; gap:8px;">
-                    <button class="glass-btn" onclick="openSkillsManager()" style="flex:1; justify-content:center; gap:8px;">
-                        ⚙️ Extensiones
-                    </button>
-                    <button class="glass-btn" onclick="openRoutinesManager()" style="flex:1; justify-content:center; gap:8px;">
-                        ⏰ Rutinas
-                    </button>
-                </div>
-                <button class="glass-btn" onclick="openVoiceProfilesModal()" style="width:100%; justify-content:center; gap:8px; border-color: rgba(0, 229, 255, 0.4); color: #00e5ff;">
-                    🎙️ Huella de Voz (Biometría)
-                </button>
-                <button class="glass-btn" onclick="openLearningModal()" style="width:100%; justify-content:center; gap:8px; border-color: rgba(168, 85, 247, 0.4); color: #c084fc;">
-                    🧠 Cerebro & Autoaprendizaje
-                </button>
-                <button id="toggleContinuousMicBtn" class="glass-btn" onclick="toggleContinuousMic()" style="width:100%; justify-content:center; gap:8px; border-color: rgba(234, 179, 8, 0.4); color: #eab308;">
-                    🎤 Escucha Continua: ACTIVA
-                </button>
-                <button id="spotifyConnectBtn" class="glass-btn" onclick="openSpotifyAuth()" style="width:100%; justify-content:center; gap:8px; border-color: rgba(34, 197, 94, 0.4); color: #4ade80;">
-                    🎵 Vincular Spotify
-                </button>
-                <div id="spotifyDeviceContainer" style="display:none; width:100%;">
-                    <select id="spotifyDeviceSelect" class="glass-input" style="width:100%; padding: 8px 12px; font-size: 13px; color: #4ade80; border-color: rgba(34, 197, 94, 0.4); cursor: pointer;" onchange="onSpotifyDeviceChange()">
-                    </select>
-                </div>
-                <input type="text" id="cronosDeviceNameInput" class="glass-input" placeholder="Ubicación (ej: Salón)" title="Ubicación/Nombre del dispositivo" style="margin-bottom: 8px;">
-                <input type="text" id="identityInput" class="glass-input" placeholder="Nombre (ej: Juanes)" value="Juanes" title="Identidad detectada">
-                <div style="display:flex; gap:6px; margin-bottom:4px;">
-                    <button class="glass-btn" onclick="setQuickIdentity('Juanes')" style="flex:1; justify-content:center; font-size:11px; padding:6px 2px;">👤 Soy Juanes</button>
-                    <button class="glass-btn" onclick="setQuickIdentity('Invitado')" style="flex:1; justify-content:center; font-size:11px; padding:6px 2px; color:#f59e0b;">👥 Soy Invitado</button>
-                </div>
-                <select id="voiceSelect" class="glass-input" title="Seleccionar Voz">
-                    <option value="male">👨 Voz Álvaro</option>
-                    <option value="female">👩 Voz Elvira</option>
-                </select>
-            </div>
-
-            <!-- BARRA DE ACCIÓN MÓVIL (MICRÓFONO Y ACCESO A CHAT) -->
-            <div class="mobile-action-bar" id="mobileActionBar">
-                <button class="mobile-main-mic-btn" id="mobileMainMicBtn" onclick="toggleMic()" title="Hablar con Cronos">
-                    🎙️
-                </button>
-                <button class="mobile-open-chat-btn" id="mobileOpenChatBtn" onclick="toggleMobileChat(true)">
-                    <span>💬 Chat & Comandos</span>
-                </button>
-            </div>
-        </div>
-
-        <!-- BACKDROP DEL DESPLEGABLE MÓVIL -->
-        <div class="drawer-backdrop" id="chatBackdrop" onclick="toggleMobileChat(false)"></div>
-
-        <!-- PANEL DERECHO (CHAT / DESPLEGABLE EN MÓVIL) -->
-        <div class="panel-right" id="panelRight">
-            <div class="drawer-header" onclick="toggleMobileChat(false)">
-                <div class="drawer-handle"></div>
-                <div class="drawer-title-row">
-                    <span class="drawer-title">💬 CRONOS // HISTORIAL & COMANDOS</span>
-                    <button class="drawer-close-btn" onclick="event.stopPropagation(); toggleMobileChat(false);" title="Cerrar chat">✕</button>
-                </div>
-            </div>
-
-            <div class="chat-container" id="chatBox">
-                <div class="msg cronos">Hola, soy Cronos. ¿En qué puedo ayudarte?</div>
-            </div>
-
-            <div id="sttDebug" style="color: rgba(148, 163, 184, 0.7); font-size: 12px; text-align: center; margin-bottom: 8px; min-height: 18px; font-style: italic; font-family: monospace;">
-                <!-- Aquí se imprimirá lo que escuche en tiempo real -->
-            </div>
-            <div class="input-group">
-                <button class="btn-mic" id="micButton" onclick="toggleMic()">🎙️</button>
-                <input type="text" id="commandInput" class="glass-input" placeholder="Escribe un comando a Cronos..." onkeypress="handleEnter(event)">
-                <button class="glass-btn" onclick="sendCommandText()" style="padding: 15px 25px;">Enviar ➔</button>
-            </div>
-        </div>
-
-    </div>
-
-    <script>
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         let ws = null;
         let wsReconnectTimer = null;
@@ -1263,14 +11,7 @@
             }
             clearTimeout(wsReconnectTimer);
             try {
-                let targetWs = `${protocol}//${window.location.host}`;
-                if (window.CronosNative && typeof window.CronosNative.getWsUrl === 'function') {
-                    try {
-                        const nativeWs = window.CronosNative.getWsUrl();
-                        if (nativeWs) targetWs = nativeWs;
-                    } catch (e) {}
-                }
-                ws = new WebSocket(targetWs);
+                ws = new WebSocket(`${protocol}//${window.location.host}`);
                 ws.binaryType = 'arraybuffer';
 
                 ws.onopen = () => {
@@ -1336,7 +77,7 @@
                 if (stateText && (stateText.innerText === 'PENSANDO' || (screen && screen.classList.contains('state-thinking')))) {
                     console.warn("[Timeout] Cronos tardó en responder. Reanudando estado.");
                     updateStateUI('IDLE');
-                    appendMessage('cronos', '⚠️ No se recibió respuesta a tiempo del servidor. Comprueba la conexión.');
+                    appendMessage('Cronos', '⚠️ No se recibió respuesta a tiempo del servidor. Comprueba la conexión.');
                 }
             }, 25000);
         }
@@ -1353,7 +94,7 @@
 
         const screen = document.getElementById('screen');
         const stateText = document.getElementById('stateText');
-        const lottiePlayer = document.getElementById('cronosLottie');
+        const lottiePlayer = document.getElementById('CronosLottie');
         const chatBox = document.getElementById('chatBox');
         const input = document.getElementById('commandInput');
         const micButton = document.getElementById('micButton');
@@ -1432,7 +173,7 @@
         let isEnrollRecordingActive = false;
 
         function showMicPermissionHelp() {
-            appendMessage('cronos', `
+            appendMessage('Cronos', `
                 <div style="background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.35); border-radius: 12px; padding: 14px 16px; margin: 6px 0;">
                     <b style="color: #fca5a5; display: flex; align-items: center; gap: 8px; font-size: 14px;">
                         🔒 Permiso de micrófono bloqueado en el navegador
@@ -1593,7 +334,7 @@
                 updateStateUI('SPEAKING');
                 let user = (identityInput && identityInput.value.trim()) || 'Juanes';
                 if (!user || user.toLowerCase() === 'invitado') user = 'Juanes';
-                appendMessage('cronos', `¡Entendido! Iniciando el registro de tu huella de voz para <b>${user}</b>. Prepárate para hablar.`);
+                appendMessage('Cronos', `¡Entendido! Iniciando el registro de tu huella de voz para <b>${user}</b>. Prepárate para hablar.`);
                 if ('speechSynthesis' in window) {
                     try {
                         window.speechSynthesis.cancel();
@@ -1606,9 +347,7 @@
                 return;
             }
 
-            const currentIdentity = (identityInput && identityInput.value.trim()) || localStorage.getItem('cronos_user_identity') || 'Juanes';
-            const spotifyDevice = localStorage.getItem('spotify_default_device') || '';
-            const deviceLocation = localStorage.getItem('cronos_device_location') || '';
+            const currentIdentity = (identityInput && identityInput.value.trim()) || localStorage.getItem('Cronos_user_identity') || 'Juanes';
             updateStateUI('THINKING');
             startThinkingTimeout();
             safeSendWs({ 
@@ -1616,22 +355,19 @@
                 text: text.trim(),
                 voice: voiceSelect.value,
                 identity: currentIdentity,
-                spotify_device: spotifyDevice,
-                device_location: deviceLocation,
                 isSpoken: true
             });
         }
 
-        // Normalizador fonético que elimina tildes (átlas -> cronos) para que Google STT nunca falle
-        // Quitamos el '^' inicial. Así, si el micrófono se mezcla con el altavoz ("Hola Juanes Cronos para"),
-        // pillará "Cronos" en medio de la frase y extraerá el comando correctamente.
-        const WAKE_WORD_REGEX = /(?:(?:oye|oyes|hoye|olle|holla|oie|ella|ello|hola|ey|hey|eh|ei|ok|okay|mira|dime)[\s,.:;?¿!¡]+)?(?:cronos|crono|chronos|krono|kronos|tronos)\b[\s,.:;?¿!¡-]*(.*)$/i;
+        // Normalizador fonético que elimina tildes (átlas -> Cronos) para que Google STT nunca falle
+        // Exigimos siempre un saludo por delante para evitar el falso positivo de "Cronos" suelto
+        const WAKE_WORD_REGEX = /^(?:oye|olle|oie|hola|ey|hey|eh|ei|ok|okay|mira|dime)[\s,.:;?¿!¡]+(?:Cronos|atla|adlas|Cronoss|atlad|adla|aplas|atras)\b[\s,.:;?¿!¡-]*(.*)$/i;
 
         function normalizeWakeText(text) {
             if (!text) return '';
             return text.toLowerCase()
-                .normalize("NFD").replace(/[\u0300-\u036f]/g, "") // crónos -> cronos
-                .trim();
+                .normalize("NFD").replace(/[\u0300-\u036f]/g, "") // átlas -> Cronos
+                .trim(); // No quitamos signos aquí porque la regex ya los contempla
         }
 
         function hasWakeWord(text) {
@@ -1649,11 +385,9 @@
         function removeWakeWord(text) {
             if (!text) return '';
             const clean = text.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-            const match = clean.match(WAKE_WORD_REGEX);
-            if (match) {
-                return match[1].trim(); // Devolvemos estrictamente lo que hay DESPUÉS de Cronos (ignorando la basura previa)
-            }
-            return clean.trim();
+            return clean
+                .replace(/^(?:oye|olle|oie|hola|ey|hey|eh|ei|ok|okay|mira|dime)[\s,.:;?¿!¡]+(?:Cronos|atla|adlas|Cronoss|atlad|adla|aplas|atras)\b[\s,.:;?¿!¡-]*/gi, '')
+                .trim();
         }
 
         function isStopPhrase(text) {
@@ -1667,9 +401,9 @@
                 if (words.length <= 3) return true;
             }
 
-            // 2. Para la palabra "para": SOLO se considera orden si se dice aislada o en fórmulas directas ("para ya", "cronos para", "para por favor")
+            // 2. Para la palabra "para": SOLO se considera orden si se dice aislada o en fórmulas directas ("para ya", "Cronos para", "para por favor")
             // Esto garantiza al 100% que si Cronos dice la preposición "para" en una frase ("para ti", "medida para reducir"), JAMÁS se pare a sí mismo.
-            const isExplicitStopPara = /^(?:(?:cronos|oye\s+cronos|hola\s+cronos|por\s+favor)\s+)?para(?:\s+(?:ya|cronos|por\s+favor|un\s+momento))?$/i.test(clean);
+            const isExplicitStopPara = /^(?:(?:Cronos|oye\s+Cronos|hola\s+Cronos|por\s+favor)\s+)?para(?:\s+(?:ya|Cronos|por\s+favor|un\s+momento))?$/i.test(clean);
             if (isExplicitStopPara) {
                 return true;
             }
@@ -1689,7 +423,13 @@
             const cleanUser = text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9\s]/g, " ").trim();
             if (!cleanUser || cleanUser.length < 2) return false;
 
-            // ¡CRÍTICO! Si el usuario está diciendo una orden de parada explícita
+            // ¡CRÍTICO! Si contiene la palabra de activación de Cronos, NUNCA es eco
+            // porque Cronos tiene terminantemente prohibido pronunciar su propio nombre.
+            if (hasWakeWord(cleanUser)) {
+                return false;
+            }
+
+            // ¡CRÍTICO! Si el usuario está diciendo una orden de parada ("para", "para ya", "cállate", "stop", "silencio")
             // NUNCA es eco, es una orden directa del usuario.
             if (isStopPhrase(cleanUser)) {
                 return false;
@@ -1698,12 +438,11 @@
             const cleanCronos = lastCronosSpokenText.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9\s]/g, " ");
             const words = cleanUser.split(/\s+/).filter(w => w.length > 0);
             
-            if (cleanCronos.includes(cleanUser)) return true;
-
-            // El eco acústico del altavoz captura fragmentos sueltos
-            if (words.length >= 2) {
+            // El eco acústico del altavoz siempre captura frases de al menos 3 palabras
+            if (words.length >= 3) {
+                if (cleanCronos.includes(cleanUser)) return true;
                 const matchCount = words.filter(w => w.length > 2 && cleanCronos.includes(w)).length;
-                if (matchCount / words.length >= 0.5) {
+                if (matchCount / words.length >= 0.6) {
                     return true;
                 }
             }
@@ -1800,16 +539,21 @@
                     }
                 }
 
-                // 1. CONTROL POR VOZ MIENTRAS CRONOS HABLA (Barge-in / Pausa / Parada)
+                // 1. CONTROL POR VOZ MIENTRAS Cronos HABLA (Barge-in / Pausa / Parada)
                 if (currentAudio && !currentAudio.paused) {
-                    if (isSpokenTextEcho(currentText)) return;
-
                     const containsWake = hasWakeWord(currentText);
 
                     // Si el usuario pronuncia la palabra de activación 'Cronos':
+                    // Cronos NUNCA dice "Cronos", por lo que esta palabra proviene con 100% de certeza del usuario.
+                    // Debe procesarse SIEMPRE antes que el filtro de eco.
                     if (containsWake) {
                         const cleanWithoutWake = removeWakeWord(currentText);
-                        const hasStopWord = isStopPhrase(currentText) || isStopPhrase(cleanWithoutWake);
+
+                        // Comprobar si además de "Cronos" dijo una orden de parada inmediata:
+                        // "Cronos para", "Cronos cállate", "Cronos stop", "Cronos silencio", "Cronos cancela", etc.
+                        const hasStopWord = /\b(para|parar|ya|calla|callate|silencio|stop|basta|alto|detente|cancela|dejalo)\b/i.test(cleanWithoutWake) ||
+                                            isStopPhrase(currentText) ||
+                                            isStopPhrase(cleanWithoutWake);
 
                         if (hasStopWord) {
                             console.log("[Barge-in] 🛑 ¡Parada por voz con 'Cronos' detectada! Cortando audio:", currentText);
@@ -1862,6 +606,10 @@
 
                     // Si NO contiene la palabra de activación 'Cronos':
                     // Mientras Cronos habla, ignorar lo que sea eco del altavoz o palabras sin 'Cronos'
+                    if (isSpokenTextEcho(currentText)) {
+                        return;
+                    }
+
                     return;
                 }
 
@@ -1989,14 +737,21 @@
                         return;
                     }
 
-                    // Activar temporizador de pausa/silencio (debounce 1200ms)
+                    // Si ya es finalTranscript, despachar de inmediato
+                    if (finalTranscript.trim()) {
+                        console.log("[Voice] ⚡ Final transcript recibido:", cmd);
+                        dispatchVoiceCommand(cmd);
+                        return;
+                    }
+
+                    // Si es interimTranscript, activar temporizador de pausa/silencio (debounce 650ms)
                     clearTimeout(speechSilenceTimer);
                     speechSilenceTimer = setTimeout(() => {
                         if (isAwaitingCommand) {
-                            console.log("[Debounce] 🤫 Silencio detectado tras orden hablada:", cmd);
+                            console.log("[Debounce] ⏱️ Silencio detectado tras orden hablada:", cmd);
                             dispatchVoiceCommand(cmd);
                         }
-                    }, 1200);
+                    }, 650);
                     return;
                 }
 
@@ -2033,13 +788,18 @@
                     }, 7000);
 
                     if (restOfSentence && restOfSentence.length > 0) {
-                        clearTimeout(speechSilenceTimer);
-                        speechSilenceTimer = setTimeout(() => {
-                            if (isAwaitingCommand) {
-                                console.log("[Debounce] 🤫 Silencio detectado tras 'Cronos <comando>':", restOfSentence);
-                                dispatchVoiceCommand(restOfSentence);
-                            }
-                        }, 1200);
+                        if (finalTranscript.trim()) {
+                            console.log("[WakeWord] ⚡ Comando continuo inmediato:", restOfSentence);
+                            dispatchVoiceCommand(restOfSentence);
+                        } else {
+                            clearTimeout(speechSilenceTimer);
+                            speechSilenceTimer = setTimeout(() => {
+                                if (isAwaitingCommand) {
+                                    console.log("[Debounce] ⏱️ Silencio detectado tras 'Cronos <comando>':", restOfSentence);
+                                    dispatchVoiceCommand(restOfSentence);
+                                }
+                            }, 650);
+                        }
                     }
                 }
             };
@@ -2053,7 +813,7 @@
                 } else if (event.error === 'service-not-allowed') {
                     wakeWordListening = false;
                     micBlocked = true;
-                    appendMessage('cronos', '⚠️ El servicio de reconocimiento de voz del navegador no está disponible o está restringido.');
+                    appendMessage('Cronos', '⚠️ El servicio de reconocimiento de voz del navegador no está disponible o está restringido.');
                 }
             };
 
@@ -2131,24 +891,12 @@
                 };
 
                 currentAudio.onplay = () => {
-                    if (window.CronosNative && typeof window.CronosNative.pauseListening === 'function') {
-                        window.CronosNative.pauseListening();
-                    } else {
-                        ensureRecognitionRunning();
-                    }
+                    ensureRecognitionRunning();
                 };
-                currentAudio.onended = () => {
-                    onAudioDone();
-                    if (window.CronosNative && typeof window.CronosNative.resumeListening === 'function') {
-                        window.CronosNative.resumeListening();
-                    }
-                };
+                currentAudio.onended = onAudioDone;
                 currentAudio.onerror = (err) => {
                     console.warn("[Audio] Error en reproducción:", err);
                     onAudioDone();
-                    if (window.CronosNative && typeof window.CronosNative.resumeListening === 'function') {
-                        window.CronosNative.resumeListening();
-                    }
                 };
                 
                 currentAudio.play().catch(e => {
@@ -2190,22 +938,22 @@
                 }
                 lastCronosSpokenText = data.text || '';
                 window._lastCronosSpokenTime = Date.now();
-                appendMessage('cronos', data.text);
+                appendMessage('Cronos', data.text);
             }
         };
 
         function setQuickIdentity(name) {
             if (identityInput) {
                 identityInput.value = name;
-                localStorage.setItem('cronos_user_identity', name);
-                appendMessage('cronos', `Identidad activa en este dispositivo: <b>${name}</b>.`);
+                localStorage.setItem('Cronos_user_identity', name);
+                appendMessage('Cronos', `Identidad activa en este dispositivo: <b>${name}</b>.`);
             }
         }
 
         function appendMessage(sender, text) {
             const div = document.createElement('div');
             div.className = `msg ${sender}`;
-            if (sender === 'cronos') {
+            if (sender === 'Cronos') {
                 div.innerHTML = text;
             } else {
                 div.innerText = text;
@@ -2213,118 +961,6 @@
             chatBox.appendChild(div);
             chatBox.scrollTop = chatBox.scrollHeight;
         }
-
-        function toggleContinuousMic() {
-            wakeWordListening = !wakeWordListening;
-            const btn = document.getElementById('toggleContinuousMicBtn');
-            if (wakeWordListening) {
-                if (btn) {
-                    btn.innerHTML = '🎤 Escucha Continua: ACTIVA';
-                    btn.style.borderColor = 'rgba(234, 179, 8, 0.4)';
-                    btn.style.color = '#eab308';
-                }
-                ensureRecognitionRunning();
-                appendMessage('cronos', '✅ Escucha continua activada. Ahora reaccionaré si dices "Cronos".');
-            } else {
-                if (btn) {
-                    btn.innerHTML = '🔇 Escucha Continua: PAUSADA';
-                    btn.style.borderColor = 'rgba(100, 116, 139, 0.4)';
-                    btn.style.color = '#94a3b8';
-                }
-                if (recognition) {
-                    try { recognition.abort(); } catch(e) {}
-                }
-                appendMessage('cronos', '⏸️ Escucha continua pausada. Ideal para escuchar música en este dispositivo sin interrupciones. Toca el núcleo central 🎙️ para darme órdenes manuales.');
-            }
-        }
-
-        // MANEJADOR UNIFICADO DE VOZ (PARA WEB Y APP NATIVA)
-        function handleIncomingSpeech(text, isFinal) {
-            if (!text || !text.trim()) return;
-            const currentText = text.trim();
-            const debugEl = document.getElementById('sttDebug');
-            if (debugEl) debugEl.innerText = currentText;
-
-            if (isSpokenTextEcho(currentText)) return;
-
-            // 1. Si ya estábamos esperando orden (tocó el núcleo o dijo "Cronos" antes)
-            if (isAwaitingCommand) {
-                let cmd = removeWakeWord(currentText);
-                if (!cmd || cmd.length === 0) return;
-
-                if (isStopPhrase(cmd)) {
-                    clearTimeout(commandTimeout);
-                    clearTimeout(speechSilenceTimer);
-                    isAwaitingCommand = false;
-                    updateStateUI('IDLE');
-                    safeSendWs({ event: 'STOP_SPEAKING' });
-                    return;
-                }
-
-                if (isFinal) {
-                    dispatchVoiceCommand(cmd);
-                } else {
-                    clearTimeout(speechSilenceTimer);
-                    speechSilenceTimer = setTimeout(() => {
-                        if (isAwaitingCommand) {
-                            dispatchVoiceCommand(cmd);
-                        }
-                    }, 1000);
-                }
-                return;
-            }
-
-            // 2. Si estamos en reposo: EXIGIR palabra clave "Cronos"
-            const wakeMatch = matchWakeWord(currentText);
-            if (wakeMatch) {
-                const restOfSentence = (wakeMatch[1] || '').trim();
-
-                if (isStopPhrase(restOfSentence)) {
-                    updateStateUI('IDLE');
-                    isAwaitingCommand = false;
-                    clearTimeout(speechSilenceTimer);
-                    safeSendWs({ event: 'STOP_SPEAKING' });
-                    return;
-                }
-
-                console.log("[WakeWord] 🗣️ ¡Palabra clave 'Cronos' detectada!");
-                playWakeChime();
-                updateStateUI('LISTENING');
-                isAwaitingCommand = true;
-                safeSendWs({ event: 'WAKE_WORD_DETECTED' });
-
-                clearTimeout(commandTimeout);
-                commandTimeout = setTimeout(() => {
-                    if (isAwaitingCommand) {
-                        isAwaitingCommand = false;
-                        updateStateUI('IDLE');
-                    }
-                }, 7000);
-
-                if (restOfSentence && restOfSentence.length > 0) {
-                    if (isFinal) {
-                        dispatchVoiceCommand(restOfSentence);
-                    } else {
-                        clearTimeout(speechSilenceTimer);
-                        speechSilenceTimer = setTimeout(() => {
-                            if (isAwaitingCommand) {
-                                dispatchVoiceCommand(restOfSentence);
-                            }
-                        }, 1000);
-                    }
-                }
-            }
-        }
-
-        // PUENTE NATIVO ANDROID (KOTLIN)
-        window.onCronosNativeTranscript = function(text, isFinal) {
-            handleIncomingSpeech(text, isFinal);
-        };
-
-        window.onCronosNativeState = function(state) {
-            console.log("[NativeBridge] Cambio de estado nativo:", state);
-            updateStateUI(state);
-        };
 
         async function toggleMic() {
             // Si Cronos está hablando o pausado y pulsamos el núcleo, cortamos su voz de inmediato
@@ -2338,16 +974,8 @@
                 return;
             }
 
-            // Si estamos ejecutando dentro de la App Nativa de Android
-            if (window.CronosNative && typeof window.CronosNative.startListening === 'function') {
-                playWakeChime();
-                updateStateUI('LISTENING');
-                window.CronosNative.startListening();
-                return;
-            }
-
             if (!recognition) {
-                appendMessage('cronos', '⚠️ Tu navegador actual no soporta reconocimiento de voz nativo (SpeechRecognition). Te sugerimos abrir la interfaz en <b>Google Chrome</b> o <b>Microsoft Edge</b>.');
+                appendMessage('Cronos', '⚠️ Tu navegador actual no soporta reconocimiento de voz nativo (SpeechRecognition). Te sugerimos abrir la interfaz en <b>Google Chrome</b> o <b>Microsoft Edge</b>.');
                 return;
             }
 
@@ -2355,6 +983,7 @@
             const granted = await ensureMicPermission();
             if (!granted) return;
 
+            wakeWordListening = true;
             micBlocked = false;
 
             try {
@@ -2380,20 +1009,12 @@
 
         // Iniciar escucha continua de palabra clave si ya hay permisos concedidos y sincronizar identidad
         window.addEventListener('DOMContentLoaded', async () => {
-            const savedIdentity = localStorage.getItem('cronos_user_identity') || 'Juanes';
+            const savedIdentity = localStorage.getItem('Cronos_user_identity') || 'Juanes';
             if (identityInput) {
                 identityInput.value = savedIdentity;
                 identityInput.addEventListener('input', () => {
                     const val = identityInput.value.trim();
-                    if (val) localStorage.setItem('cronos_user_identity', val);
-                });
-            }
-
-            const deviceLocationInput = document.getElementById('cronosDeviceNameInput');
-            if (deviceLocationInput) {
-                deviceLocationInput.value = localStorage.getItem('cronos_device_location') || '';
-                deviceLocationInput.addEventListener('input', () => {
-                    localStorage.setItem('cronos_device_location', deviceLocationInput.value.trim());
+                    if (val) localStorage.setItem('Cronos_user_identity', val);
                 });
             }
             checkMicEnvironment();
@@ -2415,16 +1036,14 @@
             input.value = '';
 
             if (isVoiceEnrollmentRequest(text)) {
-                let user = (identityInput && identityInput.value.trim()) || localStorage.getItem('cronos_user_identity') || 'Juanes';
+                let user = (identityInput && identityInput.value.trim()) || localStorage.getItem('Cronos_user_identity') || 'Juanes';
                 if (!user || user.toLowerCase() === 'invitado') user = 'Juanes';
-                appendMessage('cronos', `¡Entendido! Abriendo el calibrador biométrico para <b>${user}</b>. Prepárate para hablar.`);
+                appendMessage('Cronos', `¡Entendido! Abriendo el calibrador biométrico para <b>${user}</b>. Prepárate para hablar.`);
                 triggerVoiceEnrollmentFlow(user);
                 return;
             }
 
-            const currentIdentity = (identityInput && identityInput.value.trim()) || localStorage.getItem('cronos_user_identity') || 'Juanes';
-            const spotifyDevice = localStorage.getItem('spotify_default_device') || '';
-            const deviceLocation = localStorage.getItem('cronos_device_location') || '';
+            const currentIdentity = (identityInput && identityInput.value.trim()) || localStorage.getItem('Cronos_user_identity') || 'Juanes';
             updateStateUI('THINKING');
             startThinkingTimeout();
 
@@ -2433,8 +1052,6 @@
                 text: text,
                 voice: voiceSelect.value,
                 identity: currentIdentity,
-                spotify_device: spotifyDevice,
-                device_location: deviceLocation,
                 isSpoken: true
             });
         }
@@ -2747,9 +1364,9 @@
                 });
 
                 if (profiles.length > 0) {
-                    const saved = localStorage.getItem('cronos_user_identity');
+                    const saved = localStorage.getItem('Cronos_user_identity');
                     if (!saved || saved.toLowerCase() === 'invitado') {
-                        localStorage.setItem('cronos_user_identity', profiles[0].name);
+                        localStorage.setItem('Cronos_user_identity', profiles[0].name);
                     }
                     if (identityInput && (!identityInput.value.trim() || identityInput.value.toLowerCase() === 'invitado')) {
                         identityInput.value = profiles[0].name;
@@ -2930,7 +1547,7 @@
                     loadVoiceProfilesList();
                     const idInput = document.getElementById('identityInput');
                     if (idInput) idInput.value = name;
-                    localStorage.setItem('cronos_user_identity', name);
+                    localStorage.setItem('Cronos_user_identity', name);
                 } else {
                     statusEl.innerHTML = `❌ Error: ${result.error || 'No se pudo guardar'}`;
                     statusEl.style.color = '#ef4444';
@@ -3008,7 +1625,7 @@
                         const idInput = document.getElementById('identityInput');
                         if (idInput) {
                             idInput.value = result.user;
-                            localStorage.setItem('cronos_user_identity', result.user);
+                            localStorage.setItem('Cronos_user_identity', result.user);
                         }
                     } else {
                         resultBox.innerHTML = `
@@ -3070,9 +1687,9 @@
             // 3. Finalización garantizada y desbloqueo de la interfaz
             const finishEnrollmentFlow = () => {
                 if (success) {
-                    appendMessage('cronos', `✅ ¡Huella de voz registrada con éxito para <b>${username}</b>! Ya te reconozco al hablar.`);
+                    appendMessage('Cronos', `✅ ¡Huella de voz registrada con éxito para <b>${username}</b>! Ya te reconozco al hablar.`);
                 } else {
-                    appendMessage('cronos', `⚠️ No se pudo completar el registro de huella. Puedes intentarlo de nuevo desde Ajustes.`);
+                    appendMessage('Cronos', `⚠️ No se pudo completar el registro de huella. Puedes intentarlo de nuevo desde Ajustes.`);
                 }
                 updateStateUI('IDLE');
                 isAwaitingCommand = false;
@@ -3393,9 +2010,6 @@
                 const res = await fetch('/api/spotify/status');
                 const data = await res.json();
                 const btn = document.getElementById('spotifyConnectBtn');
-                const deviceContainer = document.getElementById('spotifyDeviceContainer');
-                const deviceSelect = document.getElementById('spotifyDeviceSelect');
-                
                 if (btn) {
                     if (data.connected) {
                         const trackInfo = data.currentTrack ? ` (${data.currentTrack.slice(0, 20)}...)` : '';
@@ -3403,42 +2017,14 @@
                         btn.style.color = '#22c55e';
                         btn.style.borderColor = 'rgba(34, 197, 94, 0.6)';
                         btn.title = data.currentTrack ? `Sonando: ${data.currentTrack}` : 'Spotify vinculado y listo';
-
-                        if (deviceContainer && deviceSelect && data.devices && data.devices.length > 0) {
-                            const savedDevice = localStorage.getItem('spotify_default_device');
-                            
-                            let newHtml = '<option value="">Sin dispositivo seleccionado</option>';
-                            data.devices.forEach(d => {
-                                const selected = (savedDevice === d.name) ? ' selected' : '';
-                                newHtml += `<option value="${escapeHtml(d.name)}"${selected}>${escapeHtml(d.name)} (${escapeHtml(d.type)})</option>`;
-                            });
-
-                            if (deviceSelect.innerHTML !== newHtml) {
-                                deviceSelect.innerHTML = newHtml;
-                            }
-                            deviceContainer.style.display = 'block';
-                        } else if (deviceContainer) {
-                            deviceContainer.style.display = 'none';
-                        }
                     } else {
                         btn.innerHTML = '🎵 Vincular Spotify';
                         btn.style.color = '#4ade80';
                         btn.style.borderColor = 'rgba(34, 197, 94, 0.4)';
-                        if (deviceContainer) deviceContainer.style.display = 'none';
                     }
                 }
             } catch (e) {}
         }
-        
-        function onSpotifyDeviceChange() {
-            const val = document.getElementById('spotifyDeviceSelect').value;
-            if (val) localStorage.setItem('spotify_default_device', val);
-            else localStorage.removeItem('spotify_default_device');
-        }
-        
         setInterval(checkSpotifyStatus, 15000);
         setTimeout(checkSpotifyStatus, 1000);
-    </script>
-</body>
-</html>
-
+    

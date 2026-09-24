@@ -6,10 +6,10 @@ from pydantic import BaseModel
 from speechbrain.inference.speaker import SpeakerRecognition
 from faster_whisper import WhisperModel
 
-app = FastAPI(title="Atlas Audio Engine")
+app = FastAPI(title="Cronos Audio Engine")
 
 print("=========================================")
-print("🚀 Iniciando Motor Biométrico de Atlas...")
+print("🚀 Iniciando Motor Biométrico de Cronos...")
 print("=========================================")
 
 start_time = time.time()
