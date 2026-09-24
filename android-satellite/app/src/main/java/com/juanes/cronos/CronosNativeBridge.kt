@@ -19,7 +19,10 @@ class CronosNativeBridge(
     fun getServerIp(): String = activity.getServerIp()
 
     @JavascriptInterface
-    fun getWsUrl(): String = "ws://${activity.getServerIp()}:8080"
+    fun getWsUrl(): String {
+        val ip = activity.getServerIp()
+        return if (activity.isCurrentUrlHttps()) "wss://$ip:8443" else "ws://$ip:8080"
+    }
 
     @JavascriptInterface
     fun getHttpsUrl(): String = "https://${activity.getServerIp()}:8443"

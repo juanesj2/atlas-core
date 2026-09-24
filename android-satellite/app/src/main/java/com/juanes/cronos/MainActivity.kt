@@ -96,39 +96,80 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    fun getServerIp(): String {
-        val prefs = getSharedPreferences("cronos_prefs", Context.MODE_PRIVATE)
-        return prefs.getString("server_ip", "192.168.1.161") ?: "192.168.1.161"
+    companion object {
+        const val IP_LOCAL_DEFAULT = "192.168.1.161"
+        const val IP_TAILSCALE_DEFAULT = "100.96.33.9"
+        const val HOSTNAME_MDNS = "cronos.local"
     }
 
-    private fun setServerIp(ip: String) {
+    private var hasAttemptedFallback = false
+
+    fun getServerIp(): String {
+        val prefs = getSharedPreferences("cronos_prefs", Context.MODE_PRIVATE)
+        return prefs.getString("server_ip", IP_LOCAL_DEFAULT) ?: IP_LOCAL_DEFAULT
+    }
+
+    fun isCurrentUrlHttps(): Boolean {
+        val current = webView.url ?: ""
+        return current.startsWith("https://")
+    }
+
+    fun setServerIp(ip: String) {
         val cleanIp = ip.trim()
+            .removePrefix("http://")
+            .removePrefix("https://")
+            .removeSuffix("/")
         val prefs = getSharedPreferences("cronos_prefs", Context.MODE_PRIVATE)
         prefs.edit().putString("server_ip", cleanIp).apply()
         voiceService?.updateServerIp(cleanIp)
-        webView.loadUrl("https://$cleanIp:8443")
-        Toast.makeText(this, "Conectando a https://$cleanIp:8443", Toast.LENGTH_SHORT).show()
+        hasAttemptedFallback = false
+        val targetUrl = "https://$cleanIp:8443"
+        Log.i("CronosNav", "Conectando a: $targetUrl")
+        webView.loadUrl(targetUrl)
+        Toast.makeText(this, "Conectando a Cronos ($cleanIp)...", Toast.LENGTH_SHORT).show()
     }
 
     private fun showIpConfigDialog() {
         val currentIp = getServerIp()
+        val options = arrayOf(
+            "🏠 WiFi Casa (192.168.1.161)",
+            "🌐 Fuera / Tailscale (100.96.33.9)",
+            "🏷️ Nombre de Red (cronos.local)",
+            "✏️ Otra IP personalizada..."
+        )
+
+        AlertDialog.Builder(this)
+            .setTitle("⚙️ Conexión con Cronos")
+            .setItems(options) { _, which ->
+                when (which) {
+                    0 -> setServerIp(IP_LOCAL_DEFAULT)
+                    1 -> setServerIp(IP_TAILSCALE_DEFAULT)
+                    2 -> setServerIp(HOSTNAME_MDNS)
+                    3 -> showCustomIpInputDialog(currentIp)
+                }
+            }
+            .setNegativeButton("Cancelar", null)
+            .show()
+    }
+
+    private fun showCustomIpInputDialog(currentIp: String) {
         val input = EditText(this).apply {
             setText(currentIp)
-            hint = "Ej: 192.168.1.161"
+            hint = "Ej: 192.168.1.161 o 100.96.33.9"
             setSelection(text.length)
         }
 
         AlertDialog.Builder(this)
-            .setTitle("IP del Servidor Atlas")
-            .setMessage("Introduce la IP actual del ordenador en tu red local:")
+            .setTitle("✏️ IP Personalizada")
+            .setMessage("Introduce la IP o dominio del servidor de Cronos:")
             .setView(input)
-            .setPositiveButton("Guardar y Conectar") { _, _ ->
+            .setPositiveButton("Conectar") { _, _ ->
                 val newIp = input.text.toString().trim()
                 if (newIp.isNotEmpty()) {
                     setServerIp(newIp)
                 }
             }
-            .setNegativeButton("Cancelar", null)
+            .setNegativeButton("Volver") { _, _ -> showIpConfigDialog() }
             .show()
     }
 
@@ -162,7 +203,7 @@ class MainActivity : AppCompatActivity() {
                 handler: SslErrorHandler?,
                 error: SslError?
             ) {
-                // Aceptar certificado autofirmado en la red local
+                // Aceptar certificado autofirmado en la red local o Tailscale
                 handler?.proceed()
             }
 
@@ -173,7 +214,21 @@ class MainActivity : AppCompatActivity() {
             ) {
                 super.onReceivedError(view, request, error)
                 if (request?.isForMainFrame == true) {
+                    val currentIp = getServerIp()
+                    Log.w("CronosNav", "Error de conexión con IP: $currentIp")
                     runOnUiThread {
+                        if (!hasAttemptedFallback) {
+                            hasAttemptedFallback = true
+                            if (currentIp == IP_LOCAL_DEFAULT || currentIp == HOSTNAME_MDNS) {
+                                Toast.makeText(this@MainActivity, "WiFi local no responde. Probando vía Tailscale (100.96.33.9)...", Toast.LENGTH_SHORT).show()
+                                setServerIp(IP_TAILSCALE_DEFAULT)
+                                return@runOnUiThread
+                            } else if (currentIp == IP_TAILSCALE_DEFAULT) {
+                                Toast.makeText(this@MainActivity, "Tailscale no responde. Probando WiFi local (192.168.1.161)...", Toast.LENGTH_SHORT).show()
+                                setServerIp(IP_LOCAL_DEFAULT)
+                                return@runOnUiThread
+                            }
+                        }
                         showIpConfigDialog()
                     }
                 }
