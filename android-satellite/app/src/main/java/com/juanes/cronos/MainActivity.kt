@@ -56,7 +56,7 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Pantalla completa inmersiva
+        // Pantalla completa inmersiva y mantener encendida (modo terminal 24/7)
         window.decorView.systemUiVisibility = (
             View.SYSTEM_UI_FLAG_LAYOUT_STABLE
             or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
@@ -69,14 +69,30 @@ class MainActivity : AppCompatActivity() {
         setContentView(webView)
 
         setupWebView()
-        requestAppPermissions()
-        initNativeSpeechRecognizer()
-        startAndBindVoiceService()
+        checkAndRequestPermissions()
 
         // Permitir cambiar la IP dejando pulsada la pantalla 2 segundos
         webView.setOnLongClickListener {
             showIpConfigDialog()
             true
+        }
+    }
+
+    private fun checkAndRequestPermissions() {
+        val hasAudio = ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+        if (!hasAudio) {
+            AlertDialog.Builder(this)
+                .setTitle("🎙️ Activar Micrófono de Cronos")
+                .setMessage("Para que Cronos funcione como asistente de voz continuo 24/7, Android requiere conceder el permiso de micrófono.\n\nEn el aviso que aparecerá a continuación, selecciona 'Mientras la app está en uso' o 'Permitir'.")
+                .setPositiveButton("Conceder Permiso") { _, _ ->
+                    requestAppPermissions()
+                }
+                .setCancelable(false)
+                .show()
+        } else {
+            initNativeSpeechRecognizer()
+            startVoiceCapture()
+            startAndBindVoiceService()
         }
     }
 
@@ -175,76 +191,84 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun initNativeSpeechRecognizer() {
-        speechIntent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE, "es-ES")
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "es-ES")
-            putExtra(RecognizerIntent.EXTRA_ONLY_RETURN_LANGUAGE_PREFERENCE, "es-ES")
-            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
-        }
-
-        try {
-            speechRecognizer?.destroy()
-            speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this).apply {
-                setRecognitionListener(object : RecognitionListener {
-                    override fun onReadyForSpeech(params: Bundle?) {
-                        Log.d("CronosSpeech", "Listo para escuchar")
-                    }
-
-                    override fun onBeginningOfSpeech() {
-                        Log.d("CronosSpeech", "Voz detectada")
-                    }
-
-                    override fun onRmsChanged(rmsdB: Float) {}
-
-                    override fun onBufferReceived(buffer: ByteArray?) {}
-
-                    override fun onEndOfSpeech() {
-                        Log.d("CronosSpeech", "Fin de frase")
-                    }
-
-                    override fun onError(error: Int) {
-                        Log.d("CronosSpeech", "SpeechRecognizer error: $error")
-                        // Backoff adaptativo para evitar quemar CPU/batería en silencios prolongados o fallos
-                        val delayMs = when (error) {
-                            SpeechRecognizer.ERROR_NO_MATCH,
-                            SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> 600L // Silencio normal
-                            SpeechRecognizer.ERROR_AUDIO,
-                            SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> 1200L // Audio ocupado
-                            SpeechRecognizer.ERROR_NETWORK,
-                            SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> 2500L // Red inestable
-                            else -> 800L
-                        }
-                        scheduleNextListening(delayMs)
-                    }
-
-                    override fun onResults(results: Bundle?) {
-                        val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                        val text = matches?.firstOrNull() ?: ""
-                        if (text.isNotEmpty()) {
-                            Log.i("CronosSpeech", "Frase transcrita: $text")
-                            nativeBridge.notifyTranscript(text, true)
-                            // Breve pausa para dar tiempo al servidor y al TTS a responder antes de volver a escuchar
-                            scheduleNextListening(400L)
-                        } else {
-                            scheduleNextListening(600L)
-                        }
-                    }
-
-                    override fun onPartialResults(partialResults: Bundle?) {
-                        val matches = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                        val text = matches?.firstOrNull() ?: ""
-                        if (text.isNotEmpty()) {
-                            nativeBridge.notifyTranscript(text, false)
-                        }
-                    }
-
-                    override fun onEvent(eventType: Int, params: Bundle?) {}
-                })
+        runOnUiThread {
+            if (!SpeechRecognizer.isRecognitionAvailable(this)) {
+                Log.e("CronosSpeech", "SpeechRecognizer no está disponible en este dispositivo")
+                Toast.makeText(this, "Aviso: Motor de voz de Google no disponible", Toast.LENGTH_LONG).show()
+                return@runOnUiThread
             }
-        } catch (e: Exception) {
-            Log.e("CronosSpeech", "Error creando SpeechRecognizer", e)
+
+            try {
+                speechRecognizer?.cancel()
+                speechRecognizer?.destroy()
+            } catch (e: Exception) {}
+
+            speechIntent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE, "es-ES")
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "es-ES")
+                putExtra(RecognizerIntent.EXTRA_ONLY_RETURN_LANGUAGE_PREFERENCE, "es-ES")
+                putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+                putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+            }
+
+            try {
+                speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this).apply {
+                    setRecognitionListener(object : RecognitionListener {
+                        override fun onReadyForSpeech(params: Bundle?) {
+                            Log.d("CronosSpeech", "Listo para escuchar")
+                        }
+
+                        override fun onBeginningOfSpeech() {
+                            Log.d("CronosSpeech", "Voz detectada")
+                        }
+
+                        override fun onRmsChanged(rmsdB: Float) {}
+
+                        override fun onBufferReceived(buffer: ByteArray?) {}
+
+                        override fun onEndOfSpeech() {
+                            Log.d("CronosSpeech", "Fin de frase")
+                        }
+
+                        override fun onError(error: Int) {
+                            Log.d("CronosSpeech", "SpeechRecognizer error: $error")
+                            // Si el motor se satura o se desconecta el cliente, recrear el reconocedor
+                            if (error == SpeechRecognizer.ERROR_CLIENT || error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY) {
+                                mainHandler.postDelayed({
+                                    initNativeSpeechRecognizer()
+                                    startVoiceCapture()
+                                }, 250)
+                                return
+                            }
+                            // Bucle reactivo rápido continuo (modo terminal 24/7 siempre enchufado)
+                            scheduleNextListening(150)
+                        }
+
+                        override fun onResults(results: Bundle?) {
+                            val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                            val text = matches?.firstOrNull() ?: ""
+                            if (text.isNotEmpty()) {
+                                Log.i("CronosSpeech", "Frase transcrita: $text")
+                                nativeBridge.notifyTranscript(text, true)
+                            }
+                            scheduleNextListening(150)
+                        }
+
+                        override fun onPartialResults(partialResults: Bundle?) {
+                            val matches = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                            val text = matches?.firstOrNull() ?: ""
+                            if (text.isNotEmpty()) {
+                                nativeBridge.notifyTranscript(text, false)
+                            }
+                        }
+
+                        override fun onEvent(eventType: Int, params: Bundle?) {}
+                    })
+                }
+            } catch (e: Exception) {
+                Log.e("CronosSpeech", "Error creando SpeechRecognizer", e)
+            }
         }
     }
 
@@ -261,7 +285,7 @@ class MainActivity : AppCompatActivity() {
             if (!isListeningLoopActive || isPausedForSpeaking) return@runOnUiThread
 
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-                requestAppPermissions()
+                checkAndRequestPermissions()
                 return@runOnUiThread
             }
 
@@ -270,10 +294,12 @@ class MainActivity : AppCompatActivity() {
             }
 
             try {
+                // Cancelar cualquier captura previa bloqueada antes de reenganchar
+                speechRecognizer?.cancel()
                 speechRecognizer?.startListening(speechIntent)
             } catch (e: Exception) {
                 Log.w("CronosSpeech", "Error al iniciar escucha: ${e.message}")
-                scheduleNextListening(500)
+                scheduleNextListening(300)
             }
         }
     }
@@ -302,7 +328,7 @@ class MainActivity : AppCompatActivity() {
     fun resumeContinuousListening() {
         runOnUiThread {
             isPausedForSpeaking = false
-            scheduleNextListening(300)
+            scheduleNextListening(200)
         }
     }
 
@@ -328,32 +354,60 @@ class MainActivity : AppCompatActivity() {
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == 101) {
-            if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+            val audioGranted = ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+            if (audioGranted) {
+                Toast.makeText(this, "🎙️ Micrófono activado para Cronos", Toast.LENGTH_SHORT).show()
                 initNativeSpeechRecognizer()
                 startVoiceCapture()
+                startAndBindVoiceService()
+            } else {
+                showPermissionDeniedDialog()
             }
         }
     }
 
+    private fun showPermissionDeniedDialog() {
+        AlertDialog.Builder(this)
+            .setTitle("⚠️ Permiso de Micrófono Requerido")
+            .setMessage("Cronos no puede escuchar tus órdenes por voz porque el permiso de micrófono está desactivado.\n\nPor favor, ve a Ajustes y activa el permiso de 'Micrófono' para Cronos.")
+            .setPositiveButton("Abrir Ajustes") { _, _ ->
+                val intent = Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                    data = android.net.Uri.fromParts("package", packageName, null)
+                }
+                startActivity(intent)
+            }
+            .setNegativeButton("Cancelar", null)
+            .show()
+    }
+
     private fun startAndBindVoiceService() {
-        val intent = Intent(this, CronosVoiceService::class.java)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            startForegroundService(intent)
-        } else {
-            startService(intent)
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            Log.w("CronosSpeech", "startAndBindVoiceService pospuesto hasta tener RECORD_AUDIO")
+            return
         }
-        bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
+
+        val intent = Intent(this, CronosVoiceService::class.java)
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(intent)
+            } else {
+                startService(intent)
+            }
+            bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
+        } catch (e: Exception) {
+            Log.e("CronosSpeech", "Error arrancando CronosVoiceService: ${e.message}")
+        }
     }
 
     override fun onPause() {
         super.onPause()
-        pauseContinuousListening()
+        // Modo terminal 24/7 enchufado: NO pausamos la escucha de voz
     }
 
     override fun onResume() {
         super.onResume()
         isListeningLoopActive = true
-        scheduleNextListening(500)
+        scheduleNextListening(200)
     }
 
     override fun onDestroy() {

@@ -62,37 +62,47 @@ class CronosVoiceService : Service() {
 
     private fun startForegroundServiceNotification() {
         val channelId = "cronos_satellite_channel"
-        val channelName = "Cronos Satellite Service"
+        val channelName = "Cronos - Servicio de Micrófono"
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 channelId,
                 channelName,
-                NotificationManager.IMPORTANCE_LOW
+                NotificationManager.IMPORTANCE_DEFAULT
             ).apply {
-                description = "Mantiene a Cronos atento a órdenes de voz sin pausar la música"
-                setShowBadge(false)
+                description = "Notificación obligatoria de Android para indicar que Cronos está usando el micrófono de forma continua"
+                setShowBadge(true)
             }
             val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             manager.createNotificationChannel(channel)
         }
 
         val notification: Notification = NotificationCompat.Builder(this, channelId)
-            .setContentTitle("Cronos Activo")
-            .setContentText("Servicio satélite listo para comandos de voz")
+            .setContentTitle("🎙️ Cronos - Micrófono Activo")
+            .setContentText("Escuchando órdenes de voz 24/7 en segundo plano")
             .setSmallIcon(android.R.drawable.ic_btn_speak_now)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setOngoing(true)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .build()
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(
-                1001,
-                notification,
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
-            )
-        } else {
-            startForeground(1001, notification)
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(
+                    1001,
+                    notification,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+                )
+            } else {
+                startForeground(1001, notification)
+            }
+        } catch (e: Exception) {
+            Log.e("CronosVoiceService", "startForeground con tipo micrófono falló o permiso pendiente: ${e.message}")
+            try {
+                startForeground(1001, notification)
+            } catch (ex: Exception) {
+                Log.e("CronosVoiceService", "Fallback startForeground falló", ex)
+            }
         }
     }
 
