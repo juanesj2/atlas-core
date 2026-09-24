@@ -103,6 +103,21 @@ app.get('/api/system/stats', async (req, res) => {
     }
 });
 
+// Ruta directa de descarga de la aplicación móvil APK
+app.get(['/download', '/descargar', '/apk', '/cronos.apk'], (req, res) => {
+    const apkPath = path.join(__dirname, '../public/cronos.apk');
+    if (fs.existsSync(apkPath)) {
+        res.download(apkPath, 'cronos.apk', (err) => {
+            if (err && !res.headersSent) {
+                console.error('[Download] Error enviando APK:', err);
+                res.status(500).send('Error durante la descarga.');
+            }
+        });
+    } else {
+        res.status(404).send('APK no disponible en el servidor.');
+    }
+});
+
 app.post('/api/trigger', async (req, res) => {
     const { event, context, username } = req.body || {};
     

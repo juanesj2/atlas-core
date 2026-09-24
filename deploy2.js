@@ -1,3 +1,4 @@
+import fs from 'fs';
 import { NodeSSH } from 'node-ssh';
 const ssh = new NodeSSH();
 
@@ -43,6 +44,11 @@ async function deploy() {
 
         console.log('Uploading public/index.html...');
         await ssh.putFile('public/index.html', `${remoteDir}/public/index.html`);
+
+        if (fs.existsSync('public/cronos.apk')) {
+            console.log('Uploading public/cronos.apk...');
+            await ssh.putFile('public/cronos.apk', `${remoteDir}/public/cronos.apk`);
+        }
         
         console.log('Restarting PM2...');
         const restartResult = await ssh.execCommand('pm2 restart atlas --update-env');
