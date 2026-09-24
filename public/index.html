@@ -480,11 +480,70 @@
         .toggle-btn { padding: 8px 18px; border-radius: 20px; font-weight: 800; font-size: 12px; background: rgba(255,255,255,0.1); color: #94a3b8; border: none; cursor: pointer; transition: all 0.3s; }
         .toggle-btn.active { background: rgba(34, 197, 94, 0.2); color: #4ade80; box-shadow: 0 0 15px rgba(34, 197, 94, 0.3); border: 1px solid rgba(34, 197, 94, 0.4); }
 
+        /* --- ESTILOS DE TELEMETRÍA DE HARDWARE --- */
+        .telemetry-card {
+            background: rgba(15, 23, 42, 0.7);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 14px;
+            padding: 13px 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 7px;
+            transition: all 0.2s ease;
+        }
+        .telemetry-card:hover {
+            border-color: rgba(0, 229, 255, 0.3);
+            background: rgba(15, 23, 42, 0.85);
+        }
+        .telemetry-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .telemetry-title {
+            font-size: 13px;
+            font-weight: 700;
+            color: #38bdf8;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .telemetry-badge {
+            background: rgba(0, 229, 255, 0.15);
+            border: 1px solid rgba(0, 229, 255, 0.3);
+            color: #00e5ff;
+            border-radius: 20px;
+            padding: 2px 9px;
+            font-size: 11px;
+            font-weight: 700;
+            font-family: 'Share Tech Mono', monospace;
+            transition: all 0.3s ease;
+        }
+        .telemetry-bar-bg {
+            width: 100%;
+            height: 8px;
+            background: rgba(255, 255, 255, 0.08);
+            border-radius: 10px;
+            overflow: hidden;
+            position: relative;
+        }
+        .telemetry-bar-fill {
+            height: 100%;
+            border-radius: 10px;
+            transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .telemetry-details {
+            display: flex;
+            justify-content: space-between;
+            font-size: 11px;
+            color: #94a3b8;
+        }
+
         /* --- ELEMENTOS MÓVILES OCULTOS POR DEFECTO EN ESCRITORIO --- */
         .drawer-backdrop { display: none; }
         .drawer-header { display: none; }
         .mobile-action-bar { display: none; }
-        .mobile-settings-btn, #mobileSettingsBtn, #mobileChatToggleBtn { display: none; }
+        .mobile-settings-btn, #mobileSettingsBtn, #mobileChatToggleBtn, #mobileTelemetryBtn { display: none; }
 
         /* --- RESPONSIVE MOBILE & TABLET (< 900px) --- */
         @media (max-width: 900px) {
@@ -551,7 +610,7 @@
                 transform: scale(0.95) !important;
             }
 
-            #mobileSettingsBtn, #mobileChatToggleBtn {
+            #mobileSettingsBtn, #mobileChatToggleBtn, #mobileTelemetryBtn {
                 position: absolute !important;
                 top: 15px !important;
                 display: flex !important;
@@ -561,8 +620,6 @@
                 height: 44px;
                 border-radius: 14px;
                 background: rgba(15, 23, 42, 0.65);
-                
-                
                 border: 1px solid rgba(255, 255, 255, 0.14);
                 color: #fff;
                 font-size: 20px;
@@ -572,7 +629,8 @@
             }
             #mobileSettingsBtn { right: 15px !important; }
             #mobileChatToggleBtn { left: 15px !important; }
-            #mobileSettingsBtn:active, #mobileChatToggleBtn:active {
+            #mobileTelemetryBtn { left: 68px !important; color: #00e5ff !important; font-size: 18px; }
+            #mobileSettingsBtn:active, #mobileChatToggleBtn:active, #mobileTelemetryBtn:active {
                 transform: scale(0.92);
                 background: rgba(0, 229, 255, 0.2);
                 border-color: rgba(0, 229, 255, 0.4);
@@ -1012,12 +1070,122 @@
         </div>
     </div>
 
+    <!-- MODAL TELEMETRÍA DEL SERVIDOR -->
+    <div class="modal-overlay" id="telemetryModal" onclick="closeModalOnBackdrop(event, 'telemetryModal')">
+        <div class="modal-content" style="max-width: 550px; background: rgba(11, 19, 38, 0.96); border: 1px solid rgba(0, 229, 255, 0.3); box-shadow: 0 0 50px rgba(0, 229, 255, 0.18);">
+            <div class="modal-header" style="border-bottom: 1px solid rgba(0, 229, 255, 0.2); padding-bottom: 12px; margin-bottom: 15px;">
+                <h2 style="color: #00e5ff; font-size: 17px; font-family: 'Orbitron', sans-serif; letter-spacing: 1px; display: flex; align-items: center; gap: 8px;">
+                    <span>📊</span> TELEMETRÍA // CRONOS HARDWARE
+                </h2>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <span id="telemetryPulse" style="font-size: 11px; color: #4ade80; display: flex; align-items: center; gap: 5px; font-family: 'Share Tech Mono', monospace;">
+                        <span style="display: inline-block; width: 8px; height: 8px; background: #4ade80; border-radius: 50%; box-shadow: 0 0 8px #4ade80;"></span>
+                        EN VIVO
+                    </span>
+                    <button class="close-btn" onclick="closeTelemetryModal()">&times;</button>
+                </div>
+            </div>
+
+            <div style="overflow-y: auto; max-height: 72vh; padding-right: 4px; display: flex; flex-direction: column; gap: 12px;">
+                <!-- TARJETA CPU -->
+                <div class="telemetry-card">
+                    <div class="telemetry-header">
+                        <div class="telemetry-title">
+                            <span>⚙️</span> CPU: <span id="telemCpuModel" style="color: #fff; font-weight: normal; font-size: 12px;">AMD Ryzen</span>
+                        </div>
+                        <div class="telemetry-badge" id="telemCpuTempBadge">-- °C</div>
+                    </div>
+                    <div class="telemetry-bar-bg">
+                        <div class="telemetry-bar-fill" id="telemCpuBar" style="width: 0%; background: linear-gradient(90deg, #00e5ff, #3b82f6);"></div>
+                    </div>
+                    <div class="telemetry-details">
+                        <span>Carga: <b id="telemCpuUsage" style="color: #00e5ff;">--%</b> (<span id="telemCpuCores">--</span> hilos)</span>
+                        <span>Temperatura: <b id="telemCpuTemp" style="color: #38bdf8;">-- °C</b></span>
+                    </div>
+                </div>
+
+                <!-- TARJETA GPU (NVIDIA RTX 3060 Ti) -->
+                <div class="telemetry-card" id="telemGpuCard" style="border-color: rgba(34, 197, 94, 0.3);">
+                    <div class="telemetry-header">
+                        <div class="telemetry-title" style="color: #4ade80;">
+                            <span>🎮</span> GPU: <span id="telemGpuName" style="color: #fff; font-weight: normal; font-size: 12px;">NVIDIA GeForce RTX 3060 Ti</span>
+                        </div>
+                        <div class="telemetry-badge" id="telemGpuTempBadge" style="background: rgba(34, 197, 94, 0.2); color: #4ade80; border-color: rgba(34, 197, 94, 0.4);">-- °C</div>
+                    </div>
+                    <div class="telemetry-bar-bg">
+                        <div class="telemetry-bar-fill" id="telemGpuBar" style="width: 0%; background: linear-gradient(90deg, #22c55e, #10b981);"></div>
+                    </div>
+                    <div class="telemetry-details">
+                        <span>Carga Núcleo: <b id="telemGpuUsage" style="color: #4ade80;">--%</b></span>
+                        <span>Potencia: <b id="telemGpuPower" style="color: #fbbf24;">-- W</b></span>
+                    </div>
+                    <div style="margin-top: 6px;">
+                        <div style="display: flex; justify-content: space-between; font-size: 11px; color: #94a3b8; margin-bottom: 4px;">
+                            <span>VRAM (Qwen LLM / Inferencia):</span>
+                            <span id="telemGpuVramText" style="color: #e2e8f0; font-family: 'Share Tech Mono', monospace;">-- / -- MB</span>
+                        </div>
+                        <div class="telemetry-bar-bg" style="height: 6px;">
+                            <div class="telemetry-bar-fill" id="telemGpuVramBar" style="width: 0%; background: linear-gradient(90deg, #a855f7, #ec4899);"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- TARJETA RAM -->
+                <div class="telemetry-card">
+                    <div class="telemetry-header">
+                        <div class="telemetry-title">
+                            <span>🧠</span> Memoria RAM
+                        </div>
+                        <div class="telemetry-badge" id="telemRamPercentBadge">--%</div>
+                    </div>
+                    <div class="telemetry-bar-bg">
+                        <div class="telemetry-bar-fill" id="telemRamBar" style="width: 0%; background: linear-gradient(90deg, #818cf8, #a855f7);"></div>
+                    </div>
+                    <div class="telemetry-details">
+                        <span>En uso: <b id="telemRamUsed" style="color: #c084fc;">-- MB</b></span>
+                        <span>Libre / Caché: <b id="telemRamFree" style="color: #94a3b8;">-- MB</b></span>
+                    </div>
+                </div>
+
+                <!-- TARJETA DISCO -->
+                <div class="telemetry-card">
+                    <div class="telemetry-header">
+                        <div class="telemetry-title">
+                            <span>💾</span> Almacenamiento SSD (Sistema)
+                        </div>
+                        <div class="telemetry-badge" id="telemDiskPercentBadge">--%</div>
+                    </div>
+                    <div class="telemetry-bar-bg">
+                        <div class="telemetry-bar-fill" id="telemDiskBar" style="width: 0%; background: linear-gradient(90deg, #f59e0b, #ef4444);"></div>
+                    </div>
+                    <div class="telemetry-details">
+                        <span>Usado: <b id="telemDiskUsed">-- GB</b> / <span id="telemDiskTotal">-- GB</span></span>
+                        <span>Espacio libre: <b id="telemDiskFree" style="color: #4ade80;">-- GB</b></span>
+                    </div>
+                </div>
+
+                <!-- FILA RESUMEN REDES Y TIEMPO -->
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                    <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; padding: 10px 12px;">
+                        <div style="font-size: 10px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px;">⏱️ Uptime del Servidor</div>
+                        <div id="telemUptime" style="font-size: 13px; font-weight: 700; color: #fff; margin-top: 4px; font-family: 'Share Tech Mono', monospace;">--</div>
+                    </div>
+                    <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; padding: 10px 12px;">
+                        <div style="font-size: 10px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px;">🌐 IP Tailscale Activa</div>
+                        <div id="telemTailscaleIp" style="font-size: 13px; font-weight: 700; color: #38bdf8; margin-top: 4px; font-family: 'Share Tech Mono', monospace;">100.96.33.9</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- MAIN DASHBOARD -->
     <div class="app-container">
         
         <!-- SIDEBAR IZQUIERDO -->
         <div class="panel-left" style="position: relative;">
             <button id="mobileChatToggleBtn" class="glass-btn" onclick="toggleMobileChat(true)" title="Abrir Chat & Comandos">💬</button>
+            <button id="mobileTelemetryBtn" class="glass-btn" onclick="openTelemetryModal()" title="Telemetría y Recursos del Servidor">📊</button>
             <button id="mobileSettingsBtn" class="glass-btn" onclick="toggleMobileSettings()" title="Ajustes">⚙️</button>
             
             <div class="screen-container" id="screen" onclick="toggleMic()" title="Toca el núcleo para hablar con Cronos">
@@ -1216,6 +1384,9 @@
                 </div>
                 <button class="glass-btn" onclick="openVoiceProfilesModal()" style="width:100%; justify-content:center; gap:8px; border-color: rgba(0, 229, 255, 0.4); color: #00e5ff;">
                     🎙️ Huella de Voz (Biometría)
+                </button>
+                <button class="glass-btn" onclick="openTelemetryModal()" style="width:100%; justify-content:center; gap:8px; border-color: rgba(56, 189, 248, 0.4); color: #38bdf8;">
+                    📊 Recursos & Telemetría del Servidor
                 </button>
                 <button class="glass-btn" onclick="openLearningModal()" style="width:100%; justify-content:center; gap:8px; border-color: rgba(168, 85, 247, 0.4); color: #c084fc;">
                     🧠 Cerebro & Autoaprendizaje
@@ -3511,6 +3682,191 @@
             else localStorage.removeItem('spotify_default_device');
         }
         
+        // ==========================================
+        // GESTOR DE TELEMETRÍA Y RECURSOS DEL SERVIDOR
+        // ==========================================
+        let telemetryPollInterval = null;
+
+        function openTelemetryModal() {
+            const modal = document.getElementById('telemetryModal');
+            if (modal) {
+                modal.style.display = 'flex';
+                modal.classList.add('open');
+                fetchTelemetryData();
+                if (telemetryPollInterval) clearInterval(telemetryPollInterval);
+                telemetryPollInterval = setInterval(fetchTelemetryData, 2500);
+            }
+        }
+
+        function closeTelemetryModal() {
+            const modal = document.getElementById('telemetryModal');
+            if (modal) {
+                modal.style.display = 'none';
+                modal.classList.remove('open');
+            }
+            if (telemetryPollInterval) {
+                clearInterval(telemetryPollInterval);
+                telemetryPollInterval = null;
+            }
+        }
+
+        function closeModalOnBackdrop(event, modalId) {
+            if (event.target && event.target.id === modalId) {
+                if (modalId === 'telemetryModal') {
+                    closeTelemetryModal();
+                } else {
+                    const el = document.getElementById(modalId);
+                    if (el) {
+                        el.style.display = 'none';
+                        el.classList.remove('open');
+                    }
+                }
+            }
+        }
+
+        async function fetchTelemetryData() {
+            try {
+                const res = await fetch('/api/system/stats');
+                if (!res.ok) return;
+                const data = await res.json();
+
+                // CPU
+                if (data.cpu) {
+                    const cpuModelEl = document.getElementById('telemCpuModel');
+                    if (cpuModelEl && data.cpu.model) cpuModelEl.textContent = data.cpu.model;
+                    
+                    const cpuCoresEl = document.getElementById('telemCpuCores');
+                    if (cpuCoresEl && data.cpu.cores) cpuCoresEl.textContent = data.cpu.cores;
+
+                    const cpuUsageEl = document.getElementById('telemCpuUsage');
+                    if (cpuUsageEl) cpuUsageEl.textContent = `${data.cpu.usage}%`;
+
+                    const cpuBar = document.getElementById('telemCpuBar');
+                    if (cpuBar) cpuBar.style.width = `${Math.min(100, Math.max(0, data.cpu.usage))}%`;
+
+                    const cpuTemp = data.cpu.temp !== null ? `${data.cpu.temp} °C` : '--';
+                    const cpuTempBadge = document.getElementById('telemCpuTempBadge');
+                    if (cpuTempBadge) {
+                        cpuTempBadge.textContent = cpuTemp;
+                        if (data.cpu.temp && data.cpu.temp > 75) {
+                            cpuTempBadge.style.background = 'rgba(239, 68, 68, 0.2)';
+                            cpuTempBadge.style.color = '#ef4444';
+                            cpuTempBadge.style.borderColor = 'rgba(239, 68, 68, 0.4)';
+                        } else {
+                            cpuTempBadge.style.background = 'rgba(0, 229, 255, 0.15)';
+                            cpuTempBadge.style.color = '#00e5ff';
+                            cpuTempBadge.style.borderColor = 'rgba(0, 229, 255, 0.3)';
+                        }
+                    }
+
+                    const cpuTempEl = document.getElementById('telemCpuTemp');
+                    if (cpuTempEl) cpuTempEl.textContent = cpuTemp;
+                }
+
+                // GPU
+                if (data.gpu) {
+                    const gpuCard = document.getElementById('telemGpuCard');
+                    if (data.gpu.available) {
+                        if (gpuCard) gpuCard.style.opacity = '1';
+                        const gpuNameEl = document.getElementById('telemGpuName');
+                        if (gpuNameEl && data.gpu.name) gpuNameEl.textContent = data.gpu.name;
+
+                        const gpuTempBadge = document.getElementById('telemGpuTempBadge');
+                        if (gpuTempBadge) {
+                            gpuTempBadge.textContent = `${data.gpu.temp} °C`;
+                            if (data.gpu.temp > 75) {
+                                gpuTempBadge.style.background = 'rgba(239, 68, 68, 0.2)';
+                                gpuTempBadge.style.color = '#ef4444';
+                                gpuTempBadge.style.borderColor = 'rgba(239, 68, 68, 0.4)';
+                            } else {
+                                gpuTempBadge.style.background = 'rgba(34, 197, 94, 0.2)';
+                                gpuTempBadge.style.color = '#4ade80';
+                                gpuTempBadge.style.borderColor = 'rgba(34, 197, 94, 0.4)';
+                            }
+                        }
+
+                        const gpuUsageEl = document.getElementById('telemGpuUsage');
+                        if (gpuUsageEl) gpuUsageEl.textContent = `${data.gpu.gpuUsage}%`;
+
+                        const gpuBar = document.getElementById('telemGpuBar');
+                        if (gpuBar) gpuBar.style.width = `${Math.min(100, Math.max(0, data.gpu.gpuUsage))}%`;
+
+                        const gpuPowerEl = document.getElementById('telemGpuPower');
+                        if (gpuPowerEl) gpuPowerEl.textContent = `${data.gpu.powerWatts} W`;
+
+                        const vramTextEl = document.getElementById('telemGpuVramText');
+                        if (vramTextEl) {
+                            vramTextEl.textContent = `${data.gpu.vramUsedMb} / ${data.gpu.vramTotalMb} MB (${data.gpu.vramPercent}%)`;
+                        }
+
+                        const vramBar = document.getElementById('telemGpuVramBar');
+                        if (vramBar) vramBar.style.width = `${Math.min(100, Math.max(0, data.gpu.vramPercent))}%`;
+                    } else {
+                        if (gpuCard) gpuCard.style.opacity = '0.5';
+                        const gpuTempBadge = document.getElementById('telemGpuTempBadge');
+                        if (gpuTempBadge) gpuTempBadge.textContent = 'OFF';
+                        const gpuUsageEl = document.getElementById('telemGpuUsage');
+                        if (gpuUsageEl) gpuUsageEl.textContent = '0%';
+                        const gpuPowerEl = document.getElementById('telemGpuPower');
+                        if (gpuPowerEl) gpuPowerEl.textContent = '0 W';
+                    }
+                }
+
+                // RAM
+                if (data.memory) {
+                    const ramBadge = document.getElementById('telemRamPercentBadge');
+                    if (ramBadge) ramBadge.textContent = `${data.memory.usagePercent}%`;
+
+                    const ramBar = document.getElementById('telemRamBar');
+                    if (ramBar) ramBar.style.width = `${Math.min(100, Math.max(0, data.memory.usagePercent))}%`;
+
+                    const ramUsedEl = document.getElementById('telemRamUsed');
+                    if (ramUsedEl) ramUsedEl.textContent = `${data.memory.usedMb} MB`;
+
+                    const ramFreeEl = document.getElementById('telemRamFree');
+                    if (ramFreeEl) ramFreeEl.textContent = `${data.memory.freeMb} MB`;
+                }
+
+                // DISK
+                if (data.disk) {
+                    const diskBadge = document.getElementById('telemDiskPercentBadge');
+                    if (diskBadge) diskBadge.textContent = `${data.disk.percent}%`;
+
+                    const diskBar = document.getElementById('telemDiskBar');
+                    if (diskBar) diskBar.style.width = `${Math.min(100, Math.max(0, data.disk.percent))}%`;
+
+                    const diskUsedEl = document.getElementById('telemDiskUsed');
+                    if (diskUsedEl) diskUsedEl.textContent = `${data.disk.usedGb} GB`;
+
+                    const diskTotalEl = document.getElementById('telemDiskTotal');
+                    if (diskTotalEl) diskTotalEl.textContent = `${data.disk.totalGb} GB`;
+
+                    const diskFreeEl = document.getElementById('telemDiskFree');
+                    if (diskFreeEl) diskFreeEl.textContent = `${data.disk.freeGb} GB`;
+                }
+
+                // UPTIME & NETWORK
+                if (data.uptime) {
+                    const uptimeEl = document.getElementById('telemUptime');
+                    if (uptimeEl) uptimeEl.textContent = data.uptime;
+                }
+
+                if (data.network) {
+                    const tailscaleEl = document.getElementById('telemTailscaleIp');
+                    if (tailscaleEl) tailscaleEl.textContent = data.network.tailscaleIp || '100.96.33.9';
+                }
+
+                // Indicador visual de actualización
+                const pulse = document.getElementById('telemetryPulse');
+                if (pulse) {
+                    pulse.style.opacity = '0.3';
+                    setTimeout(() => { if (pulse) pulse.style.opacity = '1'; }, 300);
+                }
+            } catch (err) {
+                console.warn('[Telemetry] Error al actualizar métricas:', err);
+            }
+        }
+
         setInterval(checkSpotifyStatus, 15000);
         setTimeout(checkSpotifyStatus, 1000);
     </script>

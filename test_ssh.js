@@ -1,23 +1,50 @@
 import { NodeSSH } from 'node-ssh';
-const ssh158 = new NodeSSH();
-const ssh150 = new NodeSSH();
+const ssh = new NodeSSH();
 
-async function testSSH() {
-    console.log("Probing .158...");
-    try {
-        await ssh158.connect({ host: '192.168.1.158', username: 'juanes', password: '5584', tryKeyboard: true });
-        console.log('SUCCESS on 192.168.1.158!');
-        await ssh158.execCommand('echo "Hello from 158"');
-        ssh158.dispose();
-    } catch(e) { console.log("Failed 158:", e.message); }
+async function setStaticNetplan() {
+    await ssh.connect({ host: '192.168.1.161', username: 'juanes', password: '5584', tryKeyboard: true });
+    
+    const newNetplan = `# Network configuration for Cronos static IP
+network:
+  version: 2
+  renderer: networkd
+  ethernets:
+    enp4s0:
+      match:
+        macaddress: d8:5e:d3:f7:81:60
+      set-name: enp4s0
+  wifis:
+    wlx58044f6c942f:
+      access-points:
+        DIGIFIBRA-PLUS-pcgs:
+          password: SpExFh2THY
+      dhcp4: false
+      addresses:
+        - 192.168.1.161/24
+      routes:
+        - to: default
+          via: 192.168.1.1
+      nameservers:
+        addresses:
+          - 1.1.1.1
+          - 8.8.8.8
+`;
 
-    console.log("Probing .150...");
-    try {
-        await ssh150.connect({ host: '192.168.1.150', username: 'juanes', password: '5584', tryKeyboard: true });
-        console.log('SUCCESS on 192.168.1.150!');
-        await ssh150.execCommand('echo "Hello from 150"');
-        ssh150.dispose();
-    } catch(e) { console.log("Failed 150:", e.message); }
+    // Write to a temporary file first
+    await ssh.execCommand(`cat << 'EOF' > /tmp/static-netplan.yaml\n${newNetplan}\nEOF`);
+    
+    // Validate with netplan generate
+    const valRes = await ssh.execCommand('echo 5584 | sudo -S cp /tmp/static-netplan.yaml /etc/netplan/00-installer-config.yaml && echo 5584 | sudo -S netplan generate');
+    console.log("Validation result:", valRes.code, valRes.stdout, valRes.stderr);
+    
+    if (valRes.code === 0) {
+        const applyRes = await ssh.execCommand('echo 5584 | sudo -S netplan apply');
+        console.log("Applied netplan:", applyRes.code, applyRes.stdout, applyRes.stderr);
+    } else {
+        console.error("Netplan syntax check failed! Not applying.");
+    }
+    
+    ssh.dispose();
 }
 
-testSSH();
+setStaticNetplan();

@@ -77,6 +77,8 @@ app.post('/api/skills/toggle', async (req, res) => {
 import { broadcastVoiceMessage } from './socket/satellite.js';
 import { askCronos, preloadModel, isOllamaOnline } from './ai/qwen.js';
 
+import { getSystemTelemetry } from './services/systemStats.js';
+
 // Health check para monitorizar si Cronos y Qwen están activos
 app.get('/api/health', async (req, res) => {
     const aiOnline = await isOllamaOnline(1000);
@@ -88,6 +90,17 @@ app.get('/api/health', async (req, res) => {
         hostname: 'cronos.local',
         uptime: Math.floor(process.uptime())
     });
+});
+
+// Endpoint de telemetría de hardware (CPU, GPU, RAM, temperaturas, disco)
+app.get('/api/system/stats', async (req, res) => {
+    try {
+        const stats = await getSystemTelemetry();
+        res.json(stats);
+    } catch (e) {
+        console.error('[API] Error obteniendo telemetría:', e);
+        res.status(500).json({ error: 'Error obteniendo telemetría del servidor' });
+    }
 });
 
 app.post('/api/trigger', async (req, res) => {
