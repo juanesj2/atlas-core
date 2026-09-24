@@ -75,7 +75,20 @@ app.post('/api/skills/toggle', async (req, res) => {
 
 // Endpoint Proactivo: Permite que sensores externos (HA) hagan hablar a Cronos
 import { broadcastVoiceMessage } from './socket/satellite.js';
-import { askCronos, preloadModel } from './ai/qwen.js';
+import { askCronos, preloadModel, isOllamaOnline } from './ai/qwen.js';
+
+// Health check para monitorizar si Cronos y Qwen están activos
+app.get('/api/health', async (req, res) => {
+    const aiOnline = await isOllamaOnline(1000);
+    res.json({
+        status: 'ok',
+        ai_online: aiOnline,
+        model: process.env.OLLAMA_MODEL || 'qwen2.5-coder:7b',
+        ip: '192.168.1.161',
+        hostname: 'cronos.local',
+        uptime: Math.floor(process.uptime())
+    });
+});
 
 app.post('/api/trigger', async (req, res) => {
     const { event, context, username } = req.body || {};

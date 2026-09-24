@@ -383,6 +383,38 @@
         .state-speaking .hud-lower-arc { opacity: 1; stroke: #00ffff; }
         .state-speaking .status-hud, .state-speaking .subtitle-hud { color: #ffffff; }
 
+        /* 4. OFFLINE: Modo local con IA Qwen apagada o suspendida (Ámbar / Naranja fuego telemétrico) */
+        .state-offline .hud-crown-rotor { animation-duration: 35s; }
+        .state-offline .hud-crown-rotor circle { stroke: #f97316; opacity: 0.75; }
+        .state-offline .hud-crown-inner-rotor { animation-duration: 25s; }
+        .state-offline .hud-crown-inner-rotor circle { stroke: #ef4444; opacity: 0.65; }
+        .state-offline .hud-outer-track { animation-duration: 50s; }
+        .state-offline .hud-outer-track circle { stroke: #ea580c; opacity: 0.7; }
+        .state-offline .neural-lattice { animation-duration: 30s; }
+        .state-offline .plasma-lattice { animation-duration: 20s; }
+        .state-offline .core-glow { 
+            background: radial-gradient(circle, rgba(255, 237, 213, 0.95) 0%, rgba(249, 115, 22, 0.8) 35%, rgba(239, 68, 68, 0.5) 65%, transparent 80%);
+            animation: pulse-hud 3.5s infinite alternate ease-in-out;
+        }
+        .state-offline .core-glow::after {
+            box-shadow: 0 0 35px #f97316, 0 0 75px rgba(239, 68, 68, 0.75), inset 0 0 20px rgba(255, 237, 213, 0.8);
+        }
+        .state-offline .core-svg { color: #f97316; }
+        .state-offline .core-singularity { 
+            background: #ffedd5;
+            box-shadow: 0 0 15px #f97316, 0 0 35px #ef4444;
+            animation: singularity-pulse 2.0s infinite alternate ease-in-out;
+        }
+        .state-offline .chevron-l { stroke: #f97316; opacity: 0.75; }
+        .state-offline .chevron-r { stroke: #f97316; opacity: 0.75; }
+        .state-offline .eq-bar { stroke: #f97316; opacity: 0.45; }
+        .state-offline .hud-lower-arc { opacity: 0.5; stroke: #f97316; }
+        .state-offline .status-hud, .state-offline .subtitle-hud { color: #f97316; }
+        .screen-container.state-offline {
+            box-shadow: 0 0 50px rgba(249, 115, 22, 0.35), inset 0 0 25px rgba(239, 68, 68, 0.3) !important;
+            border-color: #7c2d12 !important;
+        }
+
 
         /* --- SETTINGS GROUP --- */
         .settings-group { width: 100%; display: flex; flex-direction: column; gap: 12px; }
@@ -1360,19 +1392,50 @@
         const voiceSelect = document.getElementById('voiceSelect');
         const identityInput = document.getElementById('identityInput');
 
+        let isAIOffline = false;
+
         // Diccionario de traducción de estados para la interfaz en español
         const STATE_LABELS_ES = {
             'IDLE': 'REPOSO',
             'LISTENING': 'ESCUCHANDO',
             'THINKING': 'PENSANDO',
-            'SPEAKING': 'HABLANDO'
+            'SPEAKING': 'HABLANDO',
+            'OFFLINE': 'DESCONECTADO'
         };
 
         function updateStateUI(state) {
-            const upper = state.toUpperCase();
-            stateText.innerText = STATE_LABELS_ES[upper] || upper;
-            screen.className = 'screen-container state-' + state.toLowerCase();
+            let upper = state.toUpperCase();
+            if (upper === 'OFFLINE') {
+                isAIOffline = true;
+            } else if (upper === 'IDLE' && isAIOffline) {
+                upper = 'OFFLINE';
+                state = 'OFFLINE';
+            }
+            if (stateText) stateText.innerText = STATE_LABELS_ES[upper] || upper;
+            if (screen) screen.className = 'screen-container state-' + state.toLowerCase();
+            
+            const subtitleEl = document.querySelector('.subtitle-hud');
+            if (subtitleEl) {
+                if (upper === 'OFFLINE') {
+                    subtitleEl.innerText = 'IA DESCONECTADA // PANEL ACTIVO';
+                    subtitleEl.style.color = '#f97316';
+                } else {
+                    subtitleEl.innerText = 'VOZ ACTIVA';
+                    subtitleEl.style.color = '';
+                }
+            }
         }
+
+        // Comprobación inicial rápida de salud para saber si Qwen está offline
+        fetch('/api/health')
+            .then(res => res.json())
+            .then(data => {
+                if (data && data.ai_online === false) {
+                    isAIOffline = true;
+                    updateStateUI('OFFLINE');
+                }
+            })
+            .catch(() => {});
 
         let isRecording = false;
         let currentAudio = null;
@@ -2113,7 +2176,10 @@
                     }
                     setTimeout(() => ensureRecognitionRunning(), 200);
 
-                    if (expectResponse) {
+                    if (isAIOffline) {
+                        isAwaitingCommand = false;
+                        updateStateUI('OFFLINE');
+                    } else if (expectResponse) {
                         expectResponse = false;
                         isAwaitingCommand = true;
                         updateStateUI('LISTENING');
@@ -2121,7 +2187,7 @@
                         commandTimeout = setTimeout(() => {
                             if (isAwaitingCommand) {
                                 isAwaitingCommand = false;
-                                updateStateUI('IDLE');
+                                updateStateUI(isAIOffline ? 'OFFLINE' : 'IDLE');
                             }
                         }, 7000);
                     } else {
@@ -2163,6 +2229,15 @@
             
             if (data.event === 'OPEN_MIC') {
                 expectResponse = true;
+            }
+
+            if (data.event === 'AI_STATUS') {
+                isAIOffline = !data.online;
+                if (isAIOffline) {
+                    updateStateUI('OFFLINE');
+                } else if (screen && screen.classList.contains('state-offline')) {
+                    updateStateUI('IDLE');
+                }
             }
 
             if (data.state) {

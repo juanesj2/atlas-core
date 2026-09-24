@@ -11,6 +11,24 @@ dotenv.config();
 const MOCK_AI = process.env.MOCK_AI === 'true';
 const MODEL = process.env.OLLAMA_MODEL || 'qwen2.5-coder:7b'; 
 
+/**
+ * Comprueba de forma no bloqueante y ultrarrápida si el servidor Ollama (Qwen) está encendido.
+ * Devuelve true si responde en menos de timeoutMs, o false si está apagado o en reposo.
+ */
+export const isOllamaOnline = async (timeoutMs = 1500) => {
+    if (MOCK_AI) return true;
+    try {
+        const host = process.env.OLLAMA_HOST || 'http://127.0.0.1:11434';
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+        const res = await fetch(`${host}/api/version`, { signal: controller.signal });
+        clearTimeout(timeoutId);
+        return res.ok;
+    } catch (e) {
+        return false;
+    }
+}; 
+
 const getSystemPrompt = async (username, userPrompt) => {
     const now = new Date();
     const timeString = now.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
@@ -207,6 +225,19 @@ export const askCronos = async (userPrompt, history = [], username = 'invitado',
     }
     // ==========================================
 
+    // Comprobar disponibilidad de Ollama / Qwen de forma ultrarrápida
+    const online = await isOllamaOnline(1200);
+    if (!online) {
+        console.warn('[Cronos AI] ⚠️ Servidor Ollama/Qwen no responde (apagado o suspendido).');
+        const offlineText = 'Mi servidor de inteligencia Qwen está desconectado o en reposo. Las funciones locales de la interfaz siguen activas.';
+        history.push({ role: 'assistant', content: offlineText });
+        return { 
+            text: offlineText, 
+            toolCall: null, 
+            isOffline: true 
+        };
+    }
+
     const executedTools = [];
 
     try {
@@ -328,6 +359,14 @@ export const askCronos = async (userPrompt, history = [], username = 'invitado',
         }
     } catch (error) {
         console.error('[Cronos AI] ❌ Error en el bucle de inferencia:', error);
+        const isConnectionError = error.code === 'ECONNREFUSED' || error.message?.includes('fetch failed') || error.message?.includes('ECONNREFUSED');
+        if (isConnectionError) {
+            return { 
+                text: 'Mi servidor de inteligencia Qwen está desconectado o en reposo.', 
+                toolCall: null, 
+                isOffline: true 
+            };
+        }
         return { text: 'Mis circuitos han fallado.', toolCall: null };
     }
 };
@@ -338,6 +377,11 @@ export const askCronos = async (userPrompt, history = [], username = 'invitado',
 export const preloadModel = async () => {
     if (MOCK_AI) return;
     try {
+        const online = await isOllamaOnline(1000);
+        if (!online) {
+            console.log(`[Cronos AI] 💤 Ollama/Qwen no está en ejecución. Precalentamiento omitido.`);
+            return;
+        }
         console.log(`[Cronos AI] 🚀 Precalentando modelo ${MODEL} en VRAM de la GPU...`);
         await ollama.chat({
             model: MODEL,

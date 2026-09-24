@@ -29,6 +29,9 @@ async function deploy() {
         console.log('Uploading src/skills/spotify.js...');
         await ssh.putFile('src/skills/spotify.js', `${remoteDir}/src/skills/spotify.js`);
 
+        console.log('Uploading src/socket/satellite.js...');
+        await ssh.putFile('src/socket/satellite.js', `${remoteDir}/src/socket/satellite.js`);
+
         console.log('Uploading public/index.html...');
         await ssh.putFile('public/index.html', `${remoteDir}/public/index.html`);
         

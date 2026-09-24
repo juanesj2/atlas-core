@@ -1,4 +1,4 @@
-import { askCronos } from '../ai/qwen.js';
+import { askCronos, isOllamaOnline } from '../ai/qwen.js';
 import { MsEdgeTTS, OUTPUT_FORMAT } from 'msedge-tts';
 import fs from 'fs';
 import path from 'path';
@@ -153,8 +153,22 @@ export const handleSatelliteConnection = (ws, req) => {
     // Historial a corto plazo para esta sesión
     let conversationHistory = [];
 
-    // Enviar estado inicial
-    sendSatelliteState(ws, 'IDLE', 'sleeping');
+    // Enviar estado inicial comprobando si la IA está online
+    isOllamaOnline(1000).then(online => {
+        if (!online) {
+            sendSatelliteState(ws, 'OFFLINE', 'offline');
+            if (ws.readyState === ws.OPEN) {
+                ws.send(JSON.stringify({ event: 'AI_STATUS', online: false }));
+            }
+        } else {
+            sendSatelliteState(ws, 'IDLE', 'sleeping');
+            if (ws.readyState === ws.OPEN) {
+                ws.send(JSON.stringify({ event: 'AI_STATUS', online: true }));
+            }
+        }
+    }).catch(() => {
+        sendSatelliteState(ws, 'IDLE', 'sleeping');
+    });
 
     ws.on('message', async (message, isBinary) => {
         try {
@@ -219,7 +233,13 @@ export const handleSatelliteConnection = (ws, req) => {
                     });
                     scheduleAutoLearning();
 
-                    await sendVoiceResponse(ws, response.text, 'male');
+                    if (response.isOffline && ws.readyState === ws.OPEN) {
+                        ws.send(JSON.stringify({ event: 'AI_STATUS', online: false }));
+                    } else if (ws.readyState === ws.OPEN) {
+                        ws.send(JSON.stringify({ event: 'AI_STATUS', online: true }));
+                    }
+
+                    await sendVoiceResponse(ws, response.text, 'male', response.isOffline || false);
                     
                 } catch (e) {
                     console.error('[Satellite] Error procesando audio con la API de Python:', e.message);
@@ -286,10 +306,20 @@ export const handleSatelliteConnection = (ws, req) => {
                     }));
                 }
 
+                if (response.isOffline && ws.readyState === ws.OPEN) {
+                    ws.send(JSON.stringify({ event: 'AI_STATUS', online: false }));
+                } else if (ws.readyState === ws.OPEN) {
+                    ws.send(JSON.stringify({ event: 'AI_STATUS', online: true }));
+                }
+
                 if (data.isSpoken !== false) {
-                    await sendVoiceResponse(ws, response.text, data.voice);
+                    await sendVoiceResponse(ws, response.text, data.voice, response.isOffline || false);
                 } else {
-                    sendSatelliteState(ws, 'IDLE', 'sleeping');
+                    if (response.isOffline) {
+                        sendSatelliteState(ws, 'OFFLINE', 'offline');
+                    } else {
+                        sendSatelliteState(ws, 'IDLE', 'sleeping');
+                    }
                     if (ws.readyState === ws.OPEN) {
                         ws.send(JSON.stringify({ type: 'text_response', text: response.text }));
                     }
@@ -314,7 +344,7 @@ export const handleSatelliteConnection = (ws, req) => {
  * Función que genera audio de voz y lo envía al cliente.
  * Prioridad: Piper TTS (local, instantáneo) → Edge TTS (nube, fallback)
  */
-async function sendVoiceResponse(ws, text, voicePreference = 'male') {
+async function sendVoiceResponse(ws, text, voicePreference = 'male', isOffline = false) {
     // Sanitizar el texto: evitar que Cronos pronuncie su propio wake word
     const safeText = text
         .replace(/\bsoy\s+Cronos\b/gi, 'Soy tu asistente')
@@ -329,7 +359,7 @@ async function sendVoiceResponse(ws, text, voicePreference = 'male') {
             if (wavBuffer && wavBuffer.length > 100) {
                 const elapsed = Date.now() - startTime;
                 console.log(`[TTS/Piper] ✅ Audio generado en ${elapsed}ms (${wavBuffer.length} bytes)`);
-                return deliverAudioResponse(ws, text, wavBuffer);
+                return deliverAudioResponse(ws, text, wavBuffer, isOffline);
             }
             console.warn('[TTS/Piper] ⚠️ Piper no generó audio válido. Intentando Edge TTS...');
         } catch (e) {
@@ -359,7 +389,7 @@ async function sendVoiceResponse(ws, text, voicePreference = 'male') {
             responseSent = true;
             console.warn('[TTS/Edge] ⏱️ Timeout (3.5s). Enviando solo texto.');
             try { tts = new MsEdgeTTS(); activeVoiceModel = null; } catch (e) {}
-            deliverTextOnlyResponse(ws, text);
+            deliverTextOnlyResponse(ws, text, isOffline);
         }, 3500);
 
         const { audioStream } = tts.toStream(edgeSafeText);
@@ -375,10 +405,10 @@ async function sendVoiceResponse(ws, text, voicePreference = 'male') {
             const audioBuffer = Buffer.concat(chunks);
             if (audioBuffer.length > 0) {
                 console.log(`[TTS/Edge] ✅ Audio generado (${voiceModel}) - ${audioBuffer.length} bytes.`);
-                deliverAudioResponse(ws, text, audioBuffer);
+                deliverAudioResponse(ws, text, audioBuffer, isOffline);
             } else {
                 console.warn('[TTS/Edge] ⚠️ Audio vacío.');
-                deliverTextOnlyResponse(ws, text);
+                deliverTextOnlyResponse(ws, text, isOffline);
             }
         });
 
@@ -388,43 +418,52 @@ async function sendVoiceResponse(ws, text, voicePreference = 'male') {
             try { tts = new MsEdgeTTS(); activeVoiceModel = null; } catch (e) {}
             if (responseSent) return;
             responseSent = true;
-            deliverTextOnlyResponse(ws, text);
+            deliverTextOnlyResponse(ws, text, isOffline);
         });
 
     } catch (e) {
         console.error('[TTS] Error fatal generando voz:', e.message);
         try { tts = new MsEdgeTTS(); activeVoiceModel = null; } catch (err) {}
-        deliverTextOnlyResponse(ws, text);
+        deliverTextOnlyResponse(ws, text, isOffline);
     }
 }
 
 /**
- * Envía audio + texto al cliente y gestiona OPEN_MIC / IDLE.
+ * Envía audio + texto al cliente y gestiona OPEN_MIC / IDLE / OFFLINE.
  */
-function deliverAudioResponse(ws, text, audioBuffer) {
+function deliverAudioResponse(ws, text, audioBuffer, isOffline = false) {
     if (ws.readyState !== ws.OPEN) return;
     sendSatelliteState(ws, 'SPEAKING', 'waveform');
     ws.send(JSON.stringify({ type: 'text_response', text: text }));
     ws.send(audioBuffer, { binary: true });
     console.log(`[Satellite] 🔊 Audio y texto enviados (${audioBuffer.length} bytes)`);
-    handlePostResponse(ws, text);
+    handlePostResponse(ws, text, isOffline);
 }
 
 /**
  * Envía solo texto (sin audio) cuando TTS falla completamente.
  */
-function deliverTextOnlyResponse(ws, text) {
+function deliverTextOnlyResponse(ws, text, isOffline = false) {
     if (ws.readyState !== ws.OPEN) return;
-    sendSatelliteState(ws, 'IDLE', 'sleeping');
+    if (isOffline) {
+        sendSatelliteState(ws, 'OFFLINE', 'offline');
+    } else {
+        sendSatelliteState(ws, 'IDLE', 'sleeping');
+    }
     ws.send(JSON.stringify({ type: 'text_response', text: text }));
-    handlePostResponse(ws, text);
+    handlePostResponse(ws, text, isOffline);
 }
 
 /**
- * Lógica post-respuesta: OPEN_MIC si pregunta, IDLE si no.
+ * Lógica post-respuesta: OPEN_MIC si pregunta, OFFLINE si estaba offline, IDLE si no.
  */
-function handlePostResponse(ws, text) {
+function handlePostResponse(ws, text, isOffline = false) {
     if (ws.readyState !== ws.OPEN) return;
+    if (isOffline) {
+        console.log("[Satellite] 💤 Respuesta offline completada. Manteniendo estado OFFLINE.");
+        sendSatelliteState(ws, 'OFFLINE', 'offline');
+        return;
+    }
     const isQuestion = /[?¿]/.test(text) && !/adiós|hasta luego|nos vemos|que descanses|hasta pronto/i.test(text);
     
     if (isQuestion) {
