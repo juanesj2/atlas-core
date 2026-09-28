@@ -12,7 +12,6 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.spotify.connectstate.Connect
 import kotlinx.coroutines.*
-import xyz.gianlu.librespot.ZeroconfServer
 import xyz.gianlu.librespot.audio.MetadataWrapper
 import xyz.gianlu.librespot.audio.decoders.AudioQuality
 import xyz.gianlu.librespot.core.Session
@@ -23,7 +22,7 @@ import java.io.File
 
 /**
  * Servicio en primer plano que ejecuta el receptor nativo de Spotify Connect
- * utilizando Librespot (Zeroconf / mDNS).
+ * utilizando Librespot y AndroidZeroconfServer (NsdManager + HTTP).
  * Permite que este dispositivo Android (ej: Samsung Galaxy A20e) aparezca
  * en la red como un altavoz Spotify Connect ("Cronos Dormitorio") y reciba
  * streaming de audio directo vía AudioTrack sin depender de apps oficiales ni WebView.
@@ -47,7 +46,7 @@ class SpotifyConnectService : Service() {
     private var wifiLock: WifiManager.WifiLock? = null
     private var wakeLock: PowerManager.WakeLock? = null
 
-    private var zeroconfServer: ZeroconfServer? = null
+    private var zeroconfServer: AndroidZeroconfServer? = null
     private var currentSession: Session? = null
     private var player: Player? = null
 
@@ -93,10 +92,8 @@ class SpotifyConnectService : Service() {
 
         Log.i(TAG, "Cambiando nombre de dispositivo de '$currentDeviceName' a '$cleanName'")
         currentDeviceName = cleanName
-
-        serviceScope.launch {
-            restartZeroconf(cleanName)
-        }
+        zeroconfServer?.updateDeviceName(cleanName)
+        updateNotificationState("Listo para recibir música en $cleanName")
     }
 
     private fun acquireLocks() {
@@ -186,55 +183,29 @@ class SpotifyConnectService : Service() {
         } catch (e: Exception) {}
 
         try {
-            Log.i(TAG, "Iniciando ZeroconfServer como '$deviceName'...")
-            val server = ZeroconfServer.Builder(sessionConfig)
-                .setDeviceName(deviceName)
-                .setDeviceType(Connect.DeviceType.SPEAKER)
-                .setListenAll(true)
-                .create()
-
-            server.addSessionListener(object : ZeroconfServer.SessionListener {
-                override fun sessionChanged(newSession: Session) {
+            Log.i(TAG, "Iniciando AndroidZeroconfServer como '$deviceName'...")
+            val server = AndroidZeroconfServer(
+                context = applicationContext,
+                sessionConfig = sessionConfig,
+                deviceName = deviceName,
+                onSessionCreated = { newSession ->
                     Log.i(TAG, "🟢 Nueva sesión de Spotify Connect recibida: ${newSession.username()}")
                     currentSession = newSession
                     initPlayer(newSession)
                     updateNotificationState("🟢 Conectado con ${newSession.username()} en $currentDeviceName")
                 }
+            )
 
-                override fun sessionClosing(closingSession: Session) {
-                    Log.i(TAG, "🔴 Sesión de Spotify Connect cerrada")
-                    if (currentSession == closingSession) {
-                        currentSession = null
-                        player?.close()
-                        player = null
-                        updateNotificationState("Listo para recibir música en $currentDeviceName")
-                    }
-                }
-            })
+            if (currentSession != null) {
+                server.currentSession = currentSession
+            }
 
             zeroconfServer = server
             updateNotificationState("Listo para recibir música en $deviceName")
-            Log.i(TAG, "✅ ZeroconfServer anunciado exitosamente en la red local.")
+            Log.i(TAG, "✅ AndroidZeroconfServer anunciado exitosamente en la red local.")
         } catch (e: Exception) {
-            Log.e(TAG, "Error creando ZeroconfServer", e)
+            Log.e(TAG, "Error creando AndroidZeroconfServer", e)
         }
-    }
-
-    private fun restartZeroconf(deviceName: String) {
-        val session = currentSession
-        if (session != null) {
-            // Si hay sesión activa, reanudar
-            updateNotificationState("🟢 Conectado como $deviceName")
-        }
-        val spotifyDir = File(cacheDir, "spotify")
-        val sessionConfig = Session.Configuration.Builder()
-            .setCacheEnabled(true)
-            .setCacheDir(File(spotifyDir, "cache"))
-            .setStoreCredentials(true)
-            .setStoredCredentialsFile(File(spotifyDir, "credentials.json"))
-            .build()
-
-        startZeroconfServer(sessionConfig, deviceName)
     }
 
     private fun initPlayer(session: Session) {
