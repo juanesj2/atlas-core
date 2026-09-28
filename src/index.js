@@ -103,6 +103,13 @@ app.get('/api/system/stats', async (req, res) => {
     }
 });
 
+// Endpoint para recibir logs en tiempo real de los satélites (Spotify Connect, audio, etc.)
+app.post('/api/satellite/log', (req, res) => {
+    const { tag, message } = req.body || {};
+    console.log(`[📱 Satélite ${tag || 'LOG'}] ${message || JSON.stringify(req.body)}`);
+    res.json({ ok: true });
+});
+
 // Ruta directa de descarga de la aplicación móvil APK
 app.get(['/download', '/descargar', '/apk', '/cronos.apk'], (req, res) => {
     const apkPath = path.join(__dirname, '../public/cronos.apk');

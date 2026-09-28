@@ -141,10 +141,10 @@ class SpotifyConnectService : Service() {
             if (!spotifyDir.exists()) spotifyDir.mkdirs()
 
             val credFile = File(spotifyDir, "credentials.json")
+            val deviceId = AndroidZeroconfServer.getOrCreateDeviceId(applicationContext)
 
             val sessionConfig = Session.Configuration.Builder()
-                .setCacheEnabled(true)
-                .setCacheDir(File(spotifyDir, "cache"))
+                .setCacheEnabled(false)
                 .setStoreCredentials(true)
                 .setStoredCredentialsFile(credFile)
                 .build()
@@ -152,8 +152,9 @@ class SpotifyConnectService : Service() {
             // 1. Intentar restaurar sesión previa si existen credenciales guardadas
             if (credFile.exists() && credFile.length() > 0) {
                 try {
-                    Log.i(TAG, "Restaurando sesión de Spotify Connect desde credenciales guardadas...")
+                    CronosLog.send(TAG, "Restaurando sesión de Spotify Connect desde credenciales guardadas...")
                     val session = Session.Builder(sessionConfig)
+                        .setDeviceId(deviceId)
                         .setDeviceName(deviceName)
                         .setDeviceType(Connect.DeviceType.SPEAKER)
                         .stored(credFile)
@@ -162,9 +163,9 @@ class SpotifyConnectService : Service() {
                     currentSession = session
                     initPlayer(session)
                     updateNotificationState("🟢 Conectado como altavoz: $deviceName")
-                    Log.i(TAG, "✅ Sesión restaurada con éxito para usuario: ${session.username()}")
+                    CronosLog.send(TAG, "✅ Sesión restaurada con éxito para usuario: ${session.username()}")
                 } catch (e: Exception) {
-                    Log.w(TAG, "No se pudo reutilizar credenciales guardadas: ${e.message}. Esperando Zeroconf...")
+                    CronosLog.send(TAG, "Aviso reutilizando credenciales: ${e.message}. Esperando Zeroconf...")
                 }
             }
 
@@ -172,7 +173,7 @@ class SpotifyConnectService : Service() {
             startZeroconfServer(sessionConfig, deviceName)
 
         } catch (e: Exception) {
-            Log.e(TAG, "Error general iniciando receptor Spotify", e)
+            CronosLog.send(TAG, "❌ Error general iniciando receptor Spotify: ${e.message}")
             updateNotificationState("⚠️ Error al iniciar receptor Spotify: ${e.message}")
         }
     }
@@ -183,13 +184,13 @@ class SpotifyConnectService : Service() {
         } catch (e: Exception) {}
 
         try {
-            Log.i(TAG, "Iniciando AndroidZeroconfServer como '$deviceName'...")
+            CronosLog.send(TAG, "Iniciando AndroidZeroconfServer como '$deviceName'...")
             val server = AndroidZeroconfServer(
                 context = applicationContext,
                 sessionConfig = sessionConfig,
                 deviceName = deviceName,
                 onSessionCreated = { newSession ->
-                    Log.i(TAG, "🟢 Nueva sesión de Spotify Connect recibida: ${newSession.username()}")
+                    CronosLog.send(TAG, "🟢 Nueva sesión de Spotify Connect recibida: ${newSession.username()}")
                     currentSession = newSession
                     initPlayer(newSession)
                     updateNotificationState("🟢 Conectado con ${newSession.username()} en $currentDeviceName")
@@ -202,9 +203,9 @@ class SpotifyConnectService : Service() {
 
             zeroconfServer = server
             updateNotificationState("Listo para recibir música en $deviceName")
-            Log.i(TAG, "✅ AndroidZeroconfServer anunciado exitosamente en la red local.")
+            CronosLog.send(TAG, "✅ AndroidZeroconfServer anunciado exitosamente en la red local.")
         } catch (e: Exception) {
-            Log.e(TAG, "Error creando AndroidZeroconfServer", e)
+            CronosLog.send(TAG, "❌ Error creando AndroidZeroconfServer: ${e.message}")
         }
     }
 
@@ -222,6 +223,11 @@ class SpotifyConnectService : Service() {
                 .build()
 
             val newPlayer = Player(playerConfig, session)
+            try {
+                newPlayer.waitReady()
+            } catch (e: Exception) {
+                Log.w(TAG, "Aviso esperando Player ready: ${e.message}")
+            }
 
             newPlayer.addEventsListener(object : Player.EventsListener {
                 override fun onContextChanged(player: Player, context: String) {}
