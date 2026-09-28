@@ -363,19 +363,18 @@ app.delete('/api/learning/memories/:id', (req, res) => {
 // Para que Cronos pueda controlar tu música, necesita permisos tuyos
 function getSpotifyRedirectUri(req) {
     if (req && req.query && req.query.redirect_uri) return req.query.redirect_uri;
-    if (process.env.SPOTIFY_REDIRECT_URI) return process.env.SPOTIFY_REDIRECT_URI;
 
     // Spotify rechaza http:// con direcciones IP (da "redirect_uri: Insecure").
     // Solo permite http:// si el host es "localhost" o "127.0.0.1".
-    // Para cualquier otra IP (ej: 192.168.1.152), Spotify EXIGE estrictamente https://.
+    // Para cualquier otra IP (ej: 192.168.1.161), Spotify EXIGE estrictamente https://.
     const hostHeader = (req && req.get('host')) || '';
     const isLocalhost = hostHeader.startsWith('localhost') || hostHeader.startsWith('127.0.0.1');
 
     if (isLocalhost) {
-        return `http://localhost:${PORT}/spotify/callback`;
+        return process.env.SPOTIFY_REDIRECT_URI || `http://localhost:${PORT}/spotify/callback`;
     }
 
-    const hostname = hostHeader.split(':')[0] || '192.168.1.152';
+    const hostname = hostHeader.split(':')[0] || '192.168.1.161';
     const httpsPort = process.env.HTTPS_PORT || 8443;
     return `https://${hostname}:${httpsPort}/spotify/callback`;
 }
