@@ -28,6 +28,17 @@ class CronosNativeBridge(
     fun getHttpsUrl(): String = "https://${activity.getServerIp()}:8443"
 
     @JavascriptInterface
+    fun getDeviceLocation(): String = activity.getDeviceLocation()
+
+    @JavascriptInterface
+    fun setDeviceLocation(location: String) {
+        activity.updateDeviceLocation(location)
+    }
+
+    @JavascriptInterface
+    fun getSpotifyDeviceName(): String = activity.getSpotifyDeviceName()
+
+    @JavascriptInterface
     fun startListening() {
         Log.d("CronosBridge", "startListening requested from JS")
         activity.startVoiceCapture()

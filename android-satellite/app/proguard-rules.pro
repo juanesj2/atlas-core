@@ -14,3 +14,17 @@
 # Keep Kotlin Coroutines
 -keepnames class kotlinx.coroutines.** { *; }
 -dontwarn kotlinx.coroutines.**
+
+# Keep Librespot & Audio Sink
+-keep class xyz.gianlu.librespot.** { *; }
+-dontwarn xyz.gianlu.librespot.**
+-keep class com.spotify.** { *; }
+-dontwarn com.spotify.**
+-keep class xyz.gianlu.zeroconf.** { *; }
+-dontwarn xyz.gianlu.zeroconf.**
+-keep class org.jcraft.jorbis.** { *; }
+-dontwarn org.jcraft.jorbis.**
+-keep class javazoom.jl.** { *; }
+-dontwarn javazoom.jl.**
+-keep class com.google.protobuf.** { *; }
+-dontwarn com.google.protobuf.**

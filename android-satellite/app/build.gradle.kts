@@ -37,6 +37,13 @@ android {
     buildFeatures {
         viewBinding = false
     }
+    packaging {
+        resources {
+            excludes += "/META-INF/{AL2.0,LGPL2.1}"
+            excludes += "log4j2.xml"
+            excludes += "META-INF/INDEX.LIST"
+        }
+    }
 }
 
 dependencies {
@@ -51,4 +58,19 @@ dependencies {
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+
+    // Librespot for Spotify Connect
+    implementation("xyz.gianlu.librespot:librespot-lib:1.6.5") {
+        exclude(group = "org.slf4j", module = "slf4j-log4j12")
+    }
+    implementation("xyz.gianlu.librespot:librespot-player:1.6.5:thin") {
+        exclude(group = "com.googlecode.soundlibs", module = "tritonus-share")
+        exclude(group = "com.googlecode.soundlibs", module = "vorbisspi")
+        exclude(group = "org.slf4j", module = "slf4j-log4j12")
+        exclude(group = "org.apache.logging.log4j")
+        exclude(group = "com.lmax", module = "disruptor")
+        exclude(group = "xyz.gianlu.librespot", module = "librespot-sink")
+        exclude(group = "xyz.gianlu.librespot", module = "librespot-dacp")
+    }
+    implementation("org.slf4j:slf4j-android:1.7.36")
 }

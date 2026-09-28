@@ -2640,9 +2640,21 @@
 
             const deviceLocationInput = document.getElementById('cronosDeviceNameInput');
             if (deviceLocationInput) {
+                if (window.CronosNative && window.CronosNative.getDeviceLocation) {
+                    try {
+                        const nativeLoc = window.CronosNative.getDeviceLocation();
+                        if (nativeLoc && !localStorage.getItem('cronos_device_location')) {
+                            localStorage.setItem('cronos_device_location', nativeLoc);
+                        }
+                    } catch(e) {}
+                }
                 deviceLocationInput.value = localStorage.getItem('cronos_device_location') || '';
                 deviceLocationInput.addEventListener('input', () => {
-                    localStorage.setItem('cronos_device_location', deviceLocationInput.value.trim());
+                    const loc = deviceLocationInput.value.trim();
+                    localStorage.setItem('cronos_device_location', loc);
+                    if (window.CronosNative && window.CronosNative.setDeviceLocation) {
+                        try { window.CronosNative.setDeviceLocation(loc); } catch(e) {}
+                    }
                 });
             }
             checkMicEnvironment();

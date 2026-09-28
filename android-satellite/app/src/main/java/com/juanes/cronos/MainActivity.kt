@@ -26,6 +26,7 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import com.juanes.cronos.service.SpotifyConnectService
 
 class MainActivity : AppCompatActivity() {
 
@@ -33,6 +34,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var nativeBridge: CronosNativeBridge
     private var voiceService: CronosVoiceService? = null
     private var isServiceBound = false
+    private var spotifyService: SpotifyConnectService? = null
+    private var isSpotifyServiceBound = false
     private var speechRecognizer: SpeechRecognizer? = null
     private var speechIntent: Intent? = null
 
@@ -53,6 +56,20 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private val spotifyServiceConnection = object : ServiceConnection {
+        override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
+            val binder = service as SpotifyConnectService.LocalBinder
+            spotifyService = binder.getService()
+            isSpotifyServiceBound = true
+            Log.i("CronosNav", "SpotifyConnectService vinculado correctamente.")
+        }
+
+        override fun onServiceDisconnected(name: ComponentName?) {
+            spotifyService = null
+            isSpotifyServiceBound = false
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -69,6 +86,7 @@ class MainActivity : AppCompatActivity() {
         setContentView(webView)
 
         setupWebView()
+        startAndBindSpotifyService()
         checkAndRequestPermissions()
 
         // Permitir cambiar la IP dejando pulsada la pantalla 2 segundos
@@ -129,23 +147,92 @@ class MainActivity : AppCompatActivity() {
         Toast.makeText(this, "Conectando a Cronos ($cleanIp)...", Toast.LENGTH_SHORT).show()
     }
 
+    fun getDeviceLocation(): String {
+        val prefs = getSharedPreferences("cronos_prefs", Context.MODE_PRIVATE)
+        return prefs.getString("device_location", "Dormitorio") ?: "Dormitorio"
+    }
+
+    fun getSpotifyDeviceName(): String {
+        val loc = getDeviceLocation()
+        return if (loc.isNotBlank()) "Cronos $loc" else "Cronos Satellite"
+    }
+
+    fun updateDeviceLocation(location: String) {
+        val clean = location.trim()
+        val prefs = getSharedPreferences("cronos_prefs", Context.MODE_PRIVATE)
+        prefs.edit().putString("device_location", clean).apply()
+        val spName = getSpotifyDeviceName()
+        spotifyService?.updateDeviceName(spName)
+        mainHandler.post {
+            val safeLoc = org.json.JSONObject.quote(clean)
+            webView.evaluateJavascript(
+                "if (window.localStorage) { localStorage.setItem('cronos_device_location', $safeLoc); const inp = document.getElementById('cronosDeviceNameInput'); if (inp) inp.value = $safeLoc; }",
+                null
+            )
+            Toast.makeText(this, "📍 Dispositivo: $spName", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun startAndBindSpotifyService() {
+        val spName = getSpotifyDeviceName()
+        val intent = Intent(this, SpotifyConnectService::class.java).apply {
+            putExtra(SpotifyConnectService.EXTRA_DEVICE_NAME, spName)
+        }
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(intent)
+            } else {
+                startService(intent)
+            }
+            bindService(intent, spotifyServiceConnection, Context.BIND_AUTO_CREATE)
+            Log.i("CronosNav", "SpotifyConnectService arrancado como '$spName'")
+        } catch (e: Exception) {
+            Log.e("CronosNav", "Error arrancando SpotifyConnectService: ${e.message}")
+        }
+    }
+
     private fun showIpConfigDialog() {
         val currentIp = getServerIp()
+        val currentLocation = getDeviceLocation()
         val options = arrayOf(
             "🏠 WiFi Casa (192.168.1.161)",
             "🌐 Fuera / Tailscale (100.96.33.9)",
             "🏷️ Nombre de Red (cronos.local)",
+            "📍 Habitación / Spotify: '$currentLocation'",
             "✏️ Otra IP personalizada..."
         )
 
         AlertDialog.Builder(this)
-            .setTitle("⚙️ Conexión con Cronos")
+            .setTitle("⚙️ Ajustes de Cronos")
             .setItems(options) { _, which ->
                 when (which) {
                     0 -> setServerIp(IP_LOCAL_DEFAULT)
                     1 -> setServerIp(IP_TAILSCALE_DEFAULT)
                     2 -> setServerIp(HOSTNAME_MDNS)
-                    3 -> showCustomIpInputDialog(currentIp)
+                    3 -> showLocationInputDialog()
+                    4 -> showCustomIpInputDialog(currentIp)
+                }
+            }
+            .setNegativeButton("Cancelar", null)
+            .show()
+    }
+
+    private fun showLocationInputDialog() {
+        val currentLoc = getDeviceLocation()
+        val input = EditText(this).apply {
+            setText(currentLoc)
+            hint = "Ej: Dormitorio, Salón, Cocina"
+            setSelection(text.length)
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle("📍 Ubicación del Dispositivo")
+            .setMessage("Introduce el nombre de la habitación donde está este Cronos (se anunciará en Spotify Connect como 'Cronos <Habitación>'):")
+            .setView(input)
+            .setPositiveButton("Guardar") { _, _ ->
+                val newLoc = input.text.toString().trim()
+                if (newLoc.isNotEmpty()) {
+                    updateDeviceLocation(newLoc)
                 }
             }
             .setNegativeButton("Cancelar", null)
@@ -472,6 +559,10 @@ class MainActivity : AppCompatActivity() {
         if (isServiceBound) {
             unbindService(serviceConnection)
             isServiceBound = false
+        }
+        if (isSpotifyServiceBound) {
+            unbindService(spotifyServiceConnection)
+            isSpotifyServiceBound = false
         }
         super.onDestroy()
     }
